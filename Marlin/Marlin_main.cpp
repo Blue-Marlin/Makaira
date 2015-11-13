@@ -246,6 +246,7 @@ float current_position[NUM_AXIS] = { 0.0 };
 static float destination[NUM_AXIS] = { 0.0 };
 bool axis_known_position[3] = { false };
 bool axis_homed[3] = { false };
+static int8_t h_endstops_set = 0;
 
 static long gcode_N, gcode_LastN, Stopped_gcode_LastN = 0;
 
@@ -1198,7 +1199,47 @@ static void setup_for_endstop_move() {
       SERIAL_ECHOLNPGM("setup_for_endstop_move > enable_endstops(true)");
     }
   #endif
-  enable_endstops(true);
+  //enable_endstops(true);
+}
+
+static void clean_up_after_endstop_move() {
+  if (h_endstops_set == 0) {
+    #if ENABLED(ENDSTOPS_ONLY_FOR_HOMING)
+      #if ENABLED(DEBUG_LEVELING_FEATURE)
+        if (marlin_debug_flags & DEBUG_LEVELING) {
+          SERIAL_ECHOLNPGM("ENDSTOPS_ONLY_FOR_HOMING enable_endstops(false)");
+        }
+      #endif
+      enable_endstops(false);
+    #else
+      #if ENABLED(DEBUG_LEVELING_FEATURE)
+        if (marlin_debug_flags & DEBUG_LEVELING) {
+          SERIAL_ECHOLNPGM("ENDSTOPS_ONLY_FOR_HOMING enable_endstops(true)");
+        }
+      #endif
+      enable_endstops(true);
+    #endif
+    }
+  else if (h_endstops_set == 1) {
+    enable_endstops(true);
+    #if ENABLED(DEBUG_LEVELING_FEATURE)
+      if (marlin_debug_flags & DEBUG_LEVELING) {
+        SERIAL_ECHOLNPGM("M120 enable_endstops(true)");
+      }
+    #endif
+  }
+  else {
+    enable_endstops(false);
+    #if ENABLED(DEBUG_LEVELING_FEATURE)
+      if (marlin_debug_flags & DEBUG_LEVELING) {
+        SERIAL_ECHOLNPGM("M121 enable_endstops(false)");
+      }
+    #endif
+  }  
+  endstops_hit_on_purpose(); // clear endstop hit flags
+  feedrate = saved_feedrate;
+  feedrate_multiplier = saved_feedrate_multiplier;
+  refresh_cmd_timeout();
 }
 
 #if ENABLED(AUTO_BED_LEVELING_FEATURE)
@@ -1290,6 +1331,9 @@ static void setup_for_endstop_move() {
 
     refresh_cmd_timeout(); // to prevent stepper_inactive_time from running out and EXTRUDER_RUNOUT_PREVENT from extruding
 
+    st_synchronize();
+    set_destination_to_current();
+    
     #if ENABLED(DELTA)
 
       float start_z = current_position[Z_AXIS];
@@ -1304,8 +1348,10 @@ static void setup_for_endstop_move() {
       // move down slowly until you find the bed
       feedrate = homing_feedrate[Z_AXIS] / 4;
       destination[Z_AXIS] = -10;
+      enable_endstops(true);
       prepare_move_raw(); // this will also set_current_to_destination
       st_synchronize();
+      enable_endstops(false);
       endstops_hit_on_purpose(); // clear endstop hit flags
 
       // we have to let the planner know where we are right now as it is not where we said to go.
@@ -1328,6 +1374,7 @@ static void setup_for_endstop_move() {
 
       // Move down until the Z probe (or endstop?) is triggered
       float zPosition = -(Z_MAX_LENGTH + 10);
+      enable_endstops(true);
       line_to_z(zPosition);
       st_synchronize();
 
@@ -1337,6 +1384,7 @@ static void setup_for_endstop_move() {
 
       // move up the retract distance
       zPosition += home_bump_mm(Z_AXIS);
+      enable_endstops(false);
       line_to_z(zPosition);
       st_synchronize();
       endstops_hit_on_purpose(); // clear endstop hit flags
@@ -1345,8 +1393,10 @@ static void setup_for_endstop_move() {
       set_homing_bump_feedrate(Z_AXIS);
 
       zPosition -= home_bump_mm(Z_AXIS) * 2;
+      enable_endstops(true);
       line_to_z(zPosition);
       st_synchronize();
+      enable_endstops(false);
       endstops_hit_on_purpose(); // clear endstop hit flags
 
       // Get the current stepper position after bumping an endstop
@@ -1409,20 +1459,6 @@ static void setup_for_endstop_move() {
   inline void do_blocking_move_to_x(float x) { do_blocking_move_to(x, current_position[Y_AXIS], current_position[Z_AXIS]); }
   inline void do_blocking_move_to_z(float z) { do_blocking_move_to(current_position[X_AXIS], current_position[Y_AXIS], z); }
   inline void raise_z_after_probing() { do_blocking_move_to_z(current_position[Z_AXIS] + Z_RAISE_AFTER_PROBING); }
-
-  static void clean_up_after_endstop_move() {
-    #if ENABLED(ENDSTOPS_ONLY_FOR_HOMING)
-      #if ENABLED(DEBUG_LEVELING_FEATURE)
-        if (marlin_debug_flags & DEBUG_LEVELING) {
-          SERIAL_ECHOLNPGM("clean_up_after_endstop_move > ENDSTOPS_ONLY_FOR_HOMING > enable_endstops(false)");
-        }
-      #endif
-      enable_endstops(false);
-    #endif
-    feedrate = saved_feedrate;
-    feedrate_multiplier = saved_feedrate_multiplier;
-    refresh_cmd_timeout();
-  }
 
   static void deploy_z_probe() {
 
@@ -2267,6 +2303,7 @@ inline void gcode_G28() {
   #endif
 
   setup_for_endstop_move();
+  enable_endstops(true);
 
   set_destination_to_current(); // Directly after a reset this is all 0. Later we get a hint if we have to raise z or not.
 
@@ -2552,15 +2589,6 @@ inline void gcode_G28() {
     sync_plan_position_delta();
   #endif
 
-  #if ENABLED(ENDSTOPS_ONLY_FOR_HOMING)
-    #if ENABLED(DEBUG_LEVELING_FEATURE)
-      if (marlin_debug_flags & DEBUG_LEVELING) {
-        SERIAL_ECHOLNPGM("ENDSTOPS_ONLY_FOR_HOMING enable_endstops(false)");
-      }
-    #endif
-    enable_endstops(false);
-  #endif
-
   // For manual leveling move back to 0,0
   #if ENABLED(MESH_BED_LEVELING)
     if (mbl_was_active) {
@@ -2581,10 +2609,7 @@ inline void gcode_G28() {
     }
   #endif
 
-  feedrate = saved_feedrate;
-  feedrate_multiplier = saved_feedrate_multiplier;
-  refresh_cmd_timeout();
-  endstops_hit_on_purpose(); // clear endstop hit flags
+  clean_up_after_endstop_move();
 
   #if ENABLED(DEBUG_LEVELING_FEATURE)
     if (marlin_debug_flags & DEBUG_LEVELING) {
@@ -4391,12 +4416,12 @@ inline void gcode_M119() {
 /**
  * M120: Enable endstops
  */
-inline void gcode_M120() { enable_endstops(true); }
+inline void gcode_M120() { enable_endstops(true); h_endstops_set = 1;}
 
 /**
  * M121: Disable endstops
  */
-inline void gcode_M121() { enable_endstops(false); }
+inline void gcode_M121() { enable_endstops(false); h_endstops_set = -1;}
 
 #if ENABLED(BLINKM)
 
