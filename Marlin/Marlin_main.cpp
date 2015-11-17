@@ -254,6 +254,7 @@ static int cmd_queue_index_r = 0;
 static int cmd_queue_index_w = 0;
 static int commands_in_queue = 0;
 static char command_queue[BUFSIZE][MAX_CMD_SIZE];
+static char * command_queue_r[BUFSIZE];
 
 const float homing_feedrate[] = HOMING_FEEDRATE;
 bool axis_relative_modes[] = AXIS_RELATIVE_MODES;
@@ -833,8 +834,12 @@ void get_command() {
 
       if (!serial_count) return; // empty lines just exit
 
-      char* command = command_queue[cmd_queue_index_w];
+      char* command = command_queue_r[cmd_queue_index_w] = command_queue[cmd_queue_index_w];
       command[serial_count] = 0; // terminate string
+
+      SERIAL_ECHO(" Commandline:\"");
+      SERIAL_ECHO(command_queue[cmd_queue_index_w]);
+      SERIAL_ECHOLN("\"");
 
       // this item in the queue is not from sd
       #if ENABLED(SDSUPPORT)
@@ -843,9 +848,12 @@ void get_command() {
 
       while (*command == ' ') command++; // skip any leading spaces
       char* npos = (*command == 'N') ? command : NULL; // Require the N parameter to start the line
-      char* apos = strchr(command, '*');
+      char* apos = NULL;
 
+      SERIAL_ECHO(*npos);
       if (npos) {
+        apos = strrchr(command, '*');
+        if (apos) apos[0] = '\0';
 
         boolean M110 = strstr_P(command, PSTR("M110")) != NULL;
 
@@ -854,7 +862,9 @@ void get_command() {
           if (n2pos) npos = n2pos;
         }
 
-        gcode_N = strtol(npos + 1, NULL, 10);
+        gcode_N = strtol(npos + 1, &command_queue_r[cmd_queue_index_w], 10);
+
+        SERIAL_ECHO(gcode_N);
 
         if (gcode_N != gcode_LastN + 1 && !M110) {
           gcode_line_error(PSTR(MSG_ERR_LINE_NO));
@@ -863,13 +873,17 @@ void get_command() {
 
         if (apos) {
           byte checksum = 0, count = 0;
-          while (command[count] != '*') checksum ^= command[count++];
+          while (command[count] != '\0') checksum ^= command[count++];
 
           if (strtol(apos + 1, NULL, 10) != checksum) {
             gcode_line_error(PSTR(MSG_ERR_CHECKSUM_MISMATCH));
+            SERIAL_ECHO("CS:");
+            SERIAL_ECHOLN((int)checksum);
             return;
           }
           // if no errors, continue parsing
+        SERIAL_ECHO(" ");
+        SERIAL_ECHOLN((int)checksum);
         }
         else {
           gcode_line_error(PSTR(MSG_ERR_NO_CHECKSUM));
@@ -879,11 +893,16 @@ void get_command() {
         gcode_LastN = gcode_N;
         // if no errors, continue parsing
       }
+      SERIAL_ECHO("Cleanedline:\"");
+      SERIAL_ECHO(command_queue_r[cmd_queue_index_w]);
+      SERIAL_ECHOLN("\"");
+
+ /*
       else if (apos) { // No '*' without 'N'
         gcode_line_error(PSTR(MSG_ERR_NO_LINENUMBER_WITH_CHECKSUM), false);
         return;
       }
-
+*/
       // Movement commands alert when stopped
       if (IsStopped()) {
         char* gpos = strchr(command, 'G');
@@ -919,6 +938,7 @@ void get_command() {
     }
     else { // its not a newline, carriage return or escape char
       if (serial_char == ';') comment_mode = true;
+      if (serial_char == '*') comment_mode = false;
       if (!comment_mode) command_queue[cmd_queue_index_w][serial_count++] = serial_char;
     }
   }
@@ -5713,7 +5733,7 @@ inline void gcode_T(uint8_t tmp_extruder) {
  * This is called from the main loop()
  */
 void process_next_command() {
-  current_command = command_queue[cmd_queue_index_r];
+  current_command = command_queue_r[cmd_queue_index_r];
 
   if ((marlin_debug_flags & DEBUG_ECHO)) {
     SERIAL_ECHO_START;
@@ -5725,17 +5745,11 @@ void process_next_command() {
   //  - Bypass N[-0-9][0-9]*[ ]*
   //  - Overwrite * with nul to mark the end
   while (*current_command == ' ') ++current_command;
-  if (*current_command == 'N' && ((current_command[1] >= '0' && current_command[1] <= '9') || current_command[1] == '-')) {
-    current_command += 2; // skip N[-0-9]
-    while (*current_command >= '0' && *current_command <= '9') ++current_command; // skip [0-9]*
-    while (*current_command == ' ') ++current_command; // skip [ ]*
-  }
-  char* starpos = strchr(current_command, '*');  // * should always be the last parameter
-  if (starpos) while (*starpos == ' ' || *starpos == '*') *starpos-- = '\0'; // nullify '*' and ' '
 
   // Get the command code, which must be G, M, or T
   char command_code = *current_command;
 
+<<<<<<< HEAD
   // Skip the letter-code and spaces to get the numeric part
   current_command_args = current_command + 1;
   while (*current_command_args == ' ') ++current_command_args;
@@ -5752,10 +5766,22 @@ void process_next_command() {
   // This wastes a little cpu on commands that expect no arguments.
   while (*current_command_args == ' ' || (*current_command_args >= '0' && *current_command_args <= '9')) ++current_command_args;
 
+=======
+>>>>>>> 5f41fa5... Relax Parsing the Commandline
   // Interpret the code int
   seen_pointer = current_command;
-  codenum = code_value_short();
-
+  int codenum = (int16_t)strtol(seen_pointer + 1, &current_command_args, 10);
+  bool code_is_good = (*(current_command_args-1) >= '0' && *(current_command_args-1) <= '9');
+  if (!code_is_good) goto ExitUnknownCommand;
+  while (*current_command_args == ' ') ++current_command_args; // skip spaces if any
+  // Bail early if there's no code
+SERIAL_ECHO("CommandCode:\"");
+SERIAL_ECHO((char)command_code);
+SERIAL_ECHO("\" Codenum:");
+SERIAL_ECHO((int)codenum);
+SERIAL_ECHO(" Args:\"");
+SERIAL_ECHO(current_command_args);
+SERIAL_ECHOLN("\"");
   // Handle a known G, M, or T
   switch (command_code) {
     case 'G': switch (codenum) {
@@ -5941,7 +5967,26 @@ void process_next_command() {
           gcode_M107();
           break;
       #endif // HAS_FAN
-
+      case 113:  // debug argument parsing    "N 1     M  113    A1B2C 3  D4 E.1 F.1 G. H.I1e3J1E3;Comment*14"
+        SERIAL_ECHO("//Codes seen (float):");
+        for (char i = 'A'; i <= 'Z'; i++) {
+          if (code_seen(i)) {
+            SERIAL_ECHO(" ");
+            SERIAL_ECHO(i);
+            SERIAL_ECHO(code_value());
+          }
+        }
+        SERIAL_ECHOLN("");
+        SERIAL_ECHO("//Codes seen (int):");
+        for (char i = 'A'; i <= 'Z'; i++) {
+          if (code_seen(i)) {
+            SERIAL_ECHO(" ");
+            SERIAL_ECHO(i);
+            SERIAL_ECHO((int)code_value_long());
+          }
+        }
+        SERIAL_ECHOLN("");
+        break;
       #if ENABLED(BARICUDA)
         // PWM for HEATER_1_PIN
         #if HAS_HEATER_1
