@@ -121,8 +121,8 @@
 
 // @section homing
 
-#define ENDSTOPS_ONLY_FOR_HOMING // If defined the endstops will only be used for homing
-
+#define ENDSTOPS_ONLY_FOR_HOMING // If defined the endstops and probes will only be used until homing and for probing.
+#define FREE_ENDSTOPS            // Free the hardware endstops and probes after homing, probing and during initialisation my ?_HOME_BUMP_MM.
 // @section extras
 
 //#define Z_LATE_ENABLE // Enable Z the last moment. Needed if your Z driver overheats.

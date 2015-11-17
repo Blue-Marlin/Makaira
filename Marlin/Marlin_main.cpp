@@ -467,6 +467,10 @@ extern "C" {
 }
 #endif //!SDSUPPORT
 
+#if ENABLED(FREE_ENDSTOPS)
+  void free_endstops();
+#endif
+
 /**
  * Inject the next command from the command queue, when possible
  * Return false only if no command was pending
@@ -727,6 +731,10 @@ void setup() {
   #ifdef STAT_LED_BLUE
     pinMode(STAT_LED_BLUE, OUTPUT);
     digitalWrite(STAT_LED_BLUE, LOW); // turn it off
+  #endif
+  
+  #if ENABLED(FREE_ENDSTOPS)
+    free_endstops();
   #endif
 }
 
@@ -1242,6 +1250,67 @@ static void clean_up_after_endstop_move() {
   refresh_cmd_timeout();
 }
 
+#if ENABLED(FREE_ENDSTOPS)
+  void free_endstop(bool estop, AxisEnum axis, float way) {
+    if (estop) {
+      set_homing_bump_feedrate(axis);
+      destination[axis] = current_position[axis] + way; 
+      line_to_destination();
+      st_synchronize();
+    };
+  }
+
+  void free_endstops() {
+    #if (HAS_X_MIN && HAS_X_MAX)
+      if ((READ(X_MIN_PIN)^X_MIN_ENDSTOP_INVERTING) && (READ(X_MAX_PIN)^X_MAX_ENDSTOP_INVERTING)) {
+        SERIAL_ERROR_START;
+        SERIAL_ERRORPGM("Min & Max e-stop at same time at:");
+        SERIAL_ERRORLNPGM("X");
+        kill(PSTR("E-stop Min&Max"));
+      }
+    #endif
+    #if HAS_X_MIN
+      free_endstop(READ(X_MIN_PIN)^X_MIN_ENDSTOP_INVERTING, X_AXIS, X_HOME_BUMP_MM);
+    #endif    
+    #if HAS_X_MAX
+      free_endstop(READ(X_MAX_PIN)^X_MAX_ENDSTOP_INVERTING, X_AXIS, -X_HOME_BUMP_MM);
+    #endif    
+
+    #if (HAS_Y_MIN && HAS_Y_MAX)
+      if ((READ(Y_MIN_PIN)^Y_MIN_ENDSTOP_INVERTING) && (READ(Y_MAX_PIN)^Y_MAX_ENDSTOP_INVERTING)) {
+        SERIAL_ERROR_START;
+        SERIAL_ERRORPGM("Min & Max e-stop at same time at:");
+        SERIAL_ERRORLNPGM("Y");
+        kill(PSTR("E-stop Min&Max"));
+      }
+    #endif
+    #if HAS_Y_MIN
+      free_endstop(READ(Y_MIN_PIN)^Y_MIN_ENDSTOP_INVERTING, Y_AXIS, Y_HOME_BUMP_MM);
+    #endif    
+    #if HAS_Y_MAX
+      free_endstop(READ(Y_MAX_PIN)^Y_MAX_ENDSTOP_INVERTING, Y_AXIS, -Y_HOME_BUMP_MM);
+    #endif    
+
+    #if (HAS_Z_MIN && HAS_Z_MAX)
+      if ((READ(Z_MIN_PIN)^Z_MIN_ENDSTOP_INVERTING) && (READ(Z_MAX_PIN)^Z_MAX_ENDSTOP_INVERTING)) {
+        SERIAL_ERROR_START;
+        SERIAL_ERRORPGM("Min & Max e-stop at same time at:");
+        SERIAL_ERRORLNPGM("Z");
+        kill(PSTR("E-stop Min&Max"));
+      }
+    #endif
+    #if HAS_Z_MIN
+      free_endstop(READ(Z_MIN_PIN)^Z_MIN_ENDSTOP_INVERTING, Z_AXIS, Z_HOME_BUMP_MM);
+    #endif    
+    #if HAS_Z_MAX
+      free_endstop(READ(Z_MAX_PIN)^Z_MAX_ENDSTOP_INVERTING, Z_AXIS, -Z_HOME_BUMP_MM);
+    #endif    
+
+    endstops_hit_on_purpose();
+    feedrate = 1500.0;
+  }
+#endif
+
 #if ENABLED(AUTO_BED_LEVELING_FEATURE)
 
   #if ENABLED(DELTA)
@@ -1395,6 +1464,14 @@ static void clean_up_after_endstop_move() {
     #endif
     enable_endstops(false);
     endstops_hit_on_purpose(); // clear endstop hit flags
+
+    #if ENABLED(FREE_ENDSTOPS)
+      // Move away from the endstop by the axis HOME_BUMP_MM
+      destination[axis] = -home_bump_mm(axis) * axis_home_dir;
+      line_to_destination();
+      st_synchronize();
+      enable_endstops(true);
+    #endif
 
     #if ENABLED(DEBUG_LEVELING_FEATURE)
       if (marlin_debug_flags & DEBUG_LEVELING) {
@@ -1938,6 +2015,15 @@ static void homeaxis(AxisEnum axis) {
     destination[axis] = 2 * home_bump_mm(axis) * axis_home_dir;
     line_to_destination();
     st_synchronize();
+    
+    #if ENABLED(FREE_ENDSTOPS)
+      enable_endstops(false); // Disable endstops while moving away
+      // Move away from the endstop by the axis HOME_BUMP_MM
+      destination[axis] = -home_bump_mm(axis) * axis_home_dir;
+      line_to_destination();
+      st_synchronize();
+      enable_endstops(true);
+    #endif
 
     #if ENABLED(DEBUG_LEVELING_FEATURE)
       if (marlin_debug_flags & DEBUG_LEVELING) {
