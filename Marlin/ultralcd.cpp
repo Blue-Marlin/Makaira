@@ -1725,6 +1725,7 @@ void lcd_update() {
             (*currentMenu)();
             glcd_loopcounter++;
           } while (u8g.nextPage());
+          glcd_loops = glcd_loopcounter;
           SERIAL_ECHO("LCD_update: ");
           SERIAL_ECHO((int)glcd_loopcounter);
           SERIAL_ECHO(" ");
@@ -1948,6 +1949,14 @@ char* itostr2(const uint8_t& x) {
   conv[2] = 0;
   return conv;
 }
+char* itostr2S(const uint8_t& x, char * conv) {
+  //sprintf(conv,"%5.1f",x);
+  int xx = x;
+  conv[0] = (xx / 10) % 10 + '0';
+  conv[1] = xx % 10 + '0';
+  conv[2] = 0;
+  return conv;
+}
 
 // Convert float to string with +123.4 format
 char* ftostr31(const float& x) {
@@ -1973,9 +1982,30 @@ char* ftostr31ns(const float& x) {
   conv[5] = 0;
   return conv;
 }
+char* ftostr31nsS(const float& x, char * conv) {
+  int xx = abs(x * 10);
+  conv[0] = (xx / 1000) % 10 + '0';
+  conv[1] = (xx / 100) % 10 + '0';
+  conv[2] = (xx / 10) % 10 + '0';
+  conv[3] = '.';
+  conv[4] = xx % 10 + '0';
+  conv[5] = 0;
+  return conv;
+}
 
 // Convert float to string with 123.45 format
 char *ftostr32(const float& x) {
+  long xx = abs(x * 100);
+  conv[0] = x >= 0 ? (xx / 10000) % 10 + '0' : '-';
+  conv[1] = (xx / 1000) % 10 + '0';
+  conv[2] = (xx / 100) % 10 + '0';
+  conv[3] = '.';
+  conv[4] = (xx / 10) % 10 + '0';
+  conv[5] = xx % 10 + '0';
+  conv[6] = 0;
+  return conv;
+}
+char *ftostr32S(const float& x, char * conv) {
   long xx = abs(x * 100);
   conv[0] = x >= 0 ? (xx / 10000) % 10 + '0' : '-';
   conv[1] = (xx / 1000) % 10 + '0';
@@ -2014,9 +2044,62 @@ char* ftostr12ns(const float& x) {
   conv[4] = 0;
   return conv;
 }
+char* ftostr12nsS(const float& x, char * conv) {
+  long xx = x * 100;
+  xx = abs(xx);
+  conv[0] = (xx / 100) % 10 + '0';
+  conv[1] = '.';
+  conv[2] = (xx / 10) % 10 + '0';
+  conv[3] = (xx) % 10 + '0';
+  conv[4] = 0;
+  return conv;
+}
 
 // Convert float to space-padded string with -_23.4_ format
 char* ftostr32sp(const float& x) {
+  long xx = abs(x * 100);
+  uint8_t dig;
+  if (x < 0) { // negative val = -_0
+    conv[0] = '-';
+    dig = (xx / 1000) % 10;
+    conv[1] = dig ? '0' + dig : ' ';
+  }
+  else { // positive val = __0
+    dig = (xx / 10000) % 10;
+    if (dig) {
+      conv[0] = '0' + dig;
+      conv[1] = '0' + (xx / 1000) % 10;
+    }
+    else {
+      conv[0] = ' ';
+      dig = (xx / 1000) % 10;
+      conv[1] = dig ? '0' + dig : ' ';
+    }
+  }
+
+  conv[2] = '0' + (xx / 100) % 10; // lsd always
+
+  dig = xx % 10;
+  if (dig) { // 2 decimal places
+    conv[5] = '0' + dig;
+    conv[4] = '0' + (xx / 10) % 10;
+    conv[3] = '.';
+  }
+  else { // 1 or 0 decimal place
+    dig = (xx / 10) % 10;
+    if (dig) {
+      conv[4] = '0' + dig;
+      conv[3] = '.';
+    }
+    else {
+      conv[3] = conv[4] = ' ';
+    }
+    conv[5] = ' ';
+  }
+  conv[6] = '\0';
+  return conv;
+}
+char* ftostr32spS(const float& x, char * conv) {
   long xx = abs(x * 100);
   uint8_t dig;
   if (x < 0) { // negative val = -_0
@@ -2075,6 +2158,20 @@ char* itostr31(const int& x) {
 
 // Convert int to rj string with 123 or -12 format
 char* itostr3(const int& x) {
+  int xx = x;
+  if (xx < 0) {
+    conv[0] = '-';
+    xx = -xx;
+  }
+  else
+    conv[0] = xx >= 100 ? (xx / 100) % 10 + '0' : ' ';
+
+  conv[1] = xx >= 10 ? (xx / 10) % 10 + '0' : ' ';
+  conv[2] = xx % 10 + '0';
+  conv[3] = 0;
+  return conv;
+}
+char* itostr3S(const int& x, char * conv) {
   int xx = x;
   if (xx < 0) {
     conv[0] = '-';
