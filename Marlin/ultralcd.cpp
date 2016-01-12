@@ -1730,19 +1730,22 @@ void lcd_update() {
         } while (u8g.nextPage());
 
         glcd_loops = glcd_loopcounter;
+/*
         SERIAL_ECHO_START;
         SERIAL_ECHO("LCD_update: ");
         SERIAL_ECHO((int)glcd_loopcounter);
         SERIAL_ECHO(" ");
         SERIAL_ECHOLN(millis() - ms);
-
+*/
       }
     #else
       if (lcdDrawUpdate) {
         (*currentMenu)();
+/*
         SERIAL_ECHO_START;
         SERIAL_ECHO("LCD_update: ");
         SERIAL_ECHOLN(millis() - ms);
+*/
       }
     #endif
 
