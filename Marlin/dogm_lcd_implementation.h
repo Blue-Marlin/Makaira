@@ -333,13 +333,13 @@ static void lcd_implementation_status_screen() {
   #define XYZ_BASELINE 38
   lcd_setFont(FONT_STATUSMENU);
 
-  #if ENABLED(USE_SMALL_INFOFONT)
-    u8g.drawBox(0, 30, LCD_PIXEL_WIDTH, 10);
-  #else
-    u8g.drawBox(0, 30, LCD_PIXEL_WIDTH, 9);
-  #endif
-  u8g.setColorIndex(0); // white on black
-  u8g.setPrintPos(2, XYZ_BASELINE);
+    #if ENABLED(USE_SMALL_INFOFONT)
+      u8g.drawHLine(0, 30, LCD_PIXEL_WIDTH);
+    #else
+      u8g.drawHLine(0, 29, LCD_PIXEL_WIDTH);
+    #endif
+
+    u8g.setPrintPos(2, XYZ_BASELINE);
   lcd_print('X');
   u8g.drawPixel(8, XYZ_BASELINE - 5);
   u8g.drawPixel(8, XYZ_BASELINE - 3);
@@ -366,7 +366,13 @@ static void lcd_implementation_status_screen() {
     lcd_print(ftostr32sp(current_position[Z_AXIS]));
   else
     lcd_printPGM(PSTR("---.--"));
-  u8g.setColorIndex(1); // black on white
+
+    #if ENABLED(USE_SMALL_INFOFONT)
+      u8g.drawHLine(0, 40, LCD_PIXEL_WIDTH);
+    #else
+      u8g.drawHLine(0, 39, LCD_PIXEL_WIDTH);
+    #endif
+
 
   // Feedrate
   lcd_setFont(FONT_MENU);
