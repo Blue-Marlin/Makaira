@@ -1949,7 +1949,8 @@ int Ipow[] = {0,
               100,
               1000,
               10000};
-float Fpow[] = {0.0,
+float Fpow[] = {0.1,
+                1.0,
                 10.0,
                 100.0,
                 1000.0,
@@ -2026,8 +2027,7 @@ char* dtostrfMP(float& x, int8_t w, uint8_t maxp, char* s) {
     xx = -x;
     w--;
   }
-  w--;
-  while ((maxp > 0) && (xx > Fpow[w-maxp]))
+  while ((maxp > 0) && (xx >= Fpow[w-maxp]))
     maxp--;
   dtostrf(xx, w, maxp, ss);
   return s;
