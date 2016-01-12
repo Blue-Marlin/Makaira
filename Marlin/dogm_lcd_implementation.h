@@ -383,35 +383,38 @@ static void lcd_implementation_status_screen() {
   lcd_print(itostr3(feedrate_multiplier));
   lcd_print('%');
 
-  #if ENABLED(SDSUPPORT)
-    // SD Card Symbol
-    u8g.drawBox(42, 42 - TALL_FONT_CORRECTION, 8, 7);
-    u8g.drawBox(50, 44 - TALL_FONT_CORRECTION, 2, 5);
-    u8g.drawFrame(42, 49 - TALL_FONT_CORRECTION, 10, 4);
-    u8g.drawPixel(50, 43 - TALL_FONT_CORRECTION);
+    #if ENABLED(SDSUPPORT)
+      // SD Card Symbol
+      u8g.drawFrame(42, 42 - TALL_FONT_CORRECTION, 10, 7);
+      u8g.drawPixel(50, 43 - TALL_FONT_CORRECTION);
+      u8g.setColorIndex(0); // white on black
+      u8g.drawPixel(50, 42 - TALL_FONT_CORRECTION);
+      u8g.drawPixel(51, 43 - TALL_FONT_CORRECTION);
+      u8g.drawPixel(51, 42 - TALL_FONT_CORRECTION);
+      u8g.setColorIndex(1); // black on white
+      if (IS_SD_INSERTED) {
+        u8g.drawBox(42, 49 - TALL_FONT_CORRECTION, 10, 4);
+      }
 
-    // Progress bar frame
-    u8g.drawFrame(54, 49, 73, 4 - TALL_FONT_CORRECTION);
+      // SD Card Progress bar and clock
+      lcd_setFont(FONT_STATUSMENU);
 
-    // SD Card Progress bar and clock
-    lcd_setFont(FONT_STATUSMENU);
+      if (IS_SD_PRINTING) {
+        // Progress bar frame
+        u8g.drawFrame(54, 49, 73, 4 - TALL_FONT_CORRECTION);
 
-    if (IS_SD_PRINTING) {
-      // Progress bar solid part
-      u8g.drawBox(55, 50, (unsigned int)(71.f * card.percentDone() / 100.f), 2 - TALL_FONT_CORRECTION);
-    }
+        // Progress bar solid part
+        u8g.drawBox(55, 50, (unsigned int)(71.f * card.percentDone() / 100.f), 2 - TALL_FONT_CORRECTION);
 
-    u8g.setPrintPos(80,48);
-    if (print_job_start_ms != 0) {
-      uint16_t time = (millis() - print_job_start_ms) / 60000;
-      lcd_print(itostr2(time/60));
-      lcd_print(':');
-      lcd_print(itostr2(time%60));
-    }
-    else {
-      lcd_printPGM(PSTR("--:--"));
-    }
-  #endif
+        if (print_job_start_ms  != 0) {
+          u8g.setPrintPos(80,48);
+          uint16_t time = (millis() - print_job_start_ms) / 60000;
+          lcd_print(itostr2(time/60));
+          lcd_print(':');
+          lcd_print(itostr2(time%60));
+        }
+      }
+    #endif
 
   // Status line
   lcd_setFont(FONT_STATUSMENU);
