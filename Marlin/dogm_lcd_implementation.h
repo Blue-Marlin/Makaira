@@ -114,26 +114,29 @@
 
 // LCD selection
 #if ENABLED(U8GLIB_ST7920)
-  //U8GLIB_ST7920_128X64_RRD u8g(0,0,0);
+  //U8GLIB_ST7920_128X64_4X u8g(LCD_PINS_D4, LCD_PINS_ENABLE, LCD_PINS_RS); // original u8glib device
+  // Set PAGE_HEIGHT in ultralcd_st7920_u8glib_rrd.h to alter number of stripes
   U8GLIB_ST7920_128X64_RRD u8g(0);
-#elif ENABLED(MAKRPANEL)
-  // The MaKrPanel display, ST7565 controller as well
-  U8GLIB_NHD_C12864 u8g(DOGLCD_CS, DOGLCD_A0);
-#elif ENABLED(VIKI2) || ENABLED(miniVIKI)
-  // Mini Viki and Viki 2.0 LCD, ST7565 controller as well
-  U8GLIB_NHD_C12864 u8g(DOGLCD_CS, DOGLCD_A0);
+#elif ENABLED(VIKI2) || ENABLED(miniVIKI) || ENABLED(MAKRPANEL)
+  // Mini Viki and Viki 2.0 LCD, MaKrPanel, ST7565 controller as well
+  // U8GLIB_NHD_C12864 u8g(DOGLCD_CS, DOGLCD_A0); // 8 stripes
+  U8GLIB_NHD_C12864_2X u8g(DOGLCD_CS, DOGLCD_A0); // 4 stripes
 #elif ENABLED(U8GLIB_LM6059_AF)
   // Based on the Adafruit ST7565 (http://www.adafruit.com/products/250)
-  U8GLIB_LM6059 u8g(DOGLCD_CS, DOGLCD_A0);
+  // U8GLIB_LM6059 u8g(DOGLCD_CS, DOGLCD_A0); // 8 stripes
+  U8GLIB_LM6059_2X u8g(DOGLCD_CS, DOGLCD_A0); // 4 stripes
 #elif ENABLED(U8GLIB_SSD1306)
   // Generic support for SSD1306 OLED I2C LCDs
-  U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_NONE);
+  // U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_NONE); // 8 stripes
+  U8GLIB_SSD1306_128X64_2X u8g(U8G_I2C_OPT_NONE); // 4 stripes
 #elif ENABLED(MINIPANEL)
   // The MINIPanel display
-  U8GLIB_MINI12864 u8g(DOGLCD_CS, DOGLCD_A0);
+  // U8GLIB_MINI12864 u8g(DOGLCD_CS, DOGLCD_A0); // 8 stripes
+  U8GLIB_MINI12864_2X u8g(DOGLCD_CS, DOGLCD_A0); // 4 stripes
 #else
   // for regular DOGM128 display with HW-SPI
-  U8GLIB_DOGM128 u8g(DOGLCD_CS, DOGLCD_A0);  // HW-SPI Com: CS, A0
+  // U8GLIB_DOGM128 u8g(DOGLCD_CS, DOGLCD_A0);  // HW-SPI Com: CS, A0 // 8 stripes
+  U8GLIB_DOGM128_2X u8g(DOGLCD_CS, DOGLCD_A0);  // HW-SPI Com: CS, A0 // 4 stripes
 #endif
 
 #ifndef LCD_PIXEL_WIDTH
