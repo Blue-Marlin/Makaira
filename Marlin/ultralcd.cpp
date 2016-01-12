@@ -1714,6 +1714,7 @@ void lcd_update() {
     #if ENABLED(DOGLCD)  // Changes due to different driver architecture of the DOGM display
         if (lcdDrawUpdate) {
           blink++;     // Variable for fan animation and alive dot
+          glcd_loopcounter = 0;
           u8g.firstPage();
           do {
             lcd_setFont(FONT_MENU);
@@ -1722,11 +1723,19 @@ void lcd_update() {
             u8g.drawPixel(127, 63); // draw alive dot
             u8g.setColorIndex(1); // black on white
             (*currentMenu)();
+            glcd_loopcounter++;
           } while (u8g.nextPage());
+          SERIAL_ECHO("LCD_update: ");
+          SERIAL_ECHO((int)glcd_loopcounter);
+          SERIAL_ECHO(" ");
+          SERIAL_ECHOLN(millis() - ms);
         }
     #else
-      if (lcdDrawUpdate)
+      if (lcdDrawUpdate) {
         (*currentMenu)();
+         SERIAL_ECHO("LCD_update: ");
+         SERIAL_ECHOLN(millis() - ms);
+      }
     #endif
 
     #if ENABLED(LCD_HAS_STATUS_INDICATORS)
@@ -1741,7 +1750,7 @@ void lcd_update() {
           currentMenu != _lcd_level_bed &&
           currentMenu != _lcd_level_bed_homing &&
         #endif
-        millis() > return_to_status_ms
+        ms > return_to_status_ms
       ) {
         lcd_return_to_status();
         lcdDrawUpdate = 2;

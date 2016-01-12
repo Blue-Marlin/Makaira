@@ -256,6 +256,8 @@ static void lcd_implementation_init() {
   #endif
 }
 
+int8_t glcd_loopcounter = 0;
+
 static void lcd_implementation_clear() { } // Automatically cleared by Picture Loop
 
 static void _draw_heater_status(int x, int heater) {
