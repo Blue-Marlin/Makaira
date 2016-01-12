@@ -264,6 +264,7 @@ int8_t glcd_loopcounter = 0;
 static void lcd_implementation_clear() { } // Automatically cleared by Picture Loop
 
 static void _draw_heater_status(int x, int heater) {
+  int heaterp1 = heater + 1;
   bool isBed = heater < 0;
   int y = 17 + (isBed ? 1 : 0);
 
@@ -275,72 +276,58 @@ static void _draw_heater_status(int x, int heater) {
   lcd_print(itostr3(int(heater >= 0 ? degHotend(heater) : degBed()) + 0.5));
 
   lcd_printPGM(PSTR(LCD_STR_DEGREE " "));
-  if (!isHeatingHotend(0)) {
-    u8g.drawBox(x+7,y,2,2);
+
+  if (isBed) {
+    #if HAS_TEMP_BED
+      u8g.drawBitmapP(x + (4*DOG_CHAR_WIDTH - STATUS_BED_WIDTH)/2, 8, STATUS_BED_BYTEWIDTH, STATUS_BED_HEIGHT, bed_graphic[isHeatingBed()]);
+    #endif
   }
-  else {
-    u8g.setColorIndex(0); // white on black
-    u8g.drawBox(x + 7, y, 2, 2);
-    u8g.setColorIndex(1); // black on white
-  }
+  else
+    u8g.drawBitmapP(x + (4*DOG_CHAR_WIDTH - STATUS_EXTRUDER_WIDTH)/2, 8, STATUS_EXTRUDER_BYTEWIDTH, STATUS_EXTRUDER_HEIGHT, extruder_graphic[heater][isHeatingHotend(heater)]);
 }
 
 static void lcd_implementation_status_screen() {
   u8g.setColorIndex(1); // black on white
 
   // Symbols menu graphics, animated fan
-  u8g.drawBitmapP(9,1,STATUS_SCREENBYTEWIDTH,STATUS_SCREENHEIGHT, (blink % 2) && fanSpeed ? status_screen0_bmp : status_screen1_bmp);
-
-  #if ENABLED(SDSUPPORT)
-    // SD Card Symbol
-    u8g.drawBox(42, 42 - TALL_FONT_CORRECTION, 8, 7);
-    u8g.drawBox(50, 44 - TALL_FONT_CORRECTION, 2, 5);
-    u8g.drawFrame(42, 49 - TALL_FONT_CORRECTION, 10, 4);
-    u8g.drawPixel(50, 43 - TALL_FONT_CORRECTION);
-
-    // Progress bar frame
-    u8g.drawFrame(54, 49, 73, 4 - TALL_FONT_CORRECTION);
-
-    // SD Card Progress bar and clock
-    lcd_setFont(FONT_STATUSMENU);
-
-    if (IS_SD_PRINTING) {
-      // Progress bar solid part
-      u8g.drawBox(55, 50, (unsigned int)(71.f * card.percentDone() / 100.f), 2 - TALL_FONT_CORRECTION);
-    }
-
-    u8g.setPrintPos(80,48);
-    if (print_job_start_ms != 0) {
-      uint16_t time = (millis() - print_job_start_ms) / 60000;
-      lcd_print(itostr2(time/60));
-      lcd_print(':');
-      lcd_print(itostr2(time%60));
-    }
-    else {
-      lcd_printPGM(PSTR("--:--"));
-    }
-  #endif
+  //u8g.drawBitmapP(9,1,STATUS_SCREENBYTEWIDTH,STATUS_SCREENHEIGHT, (blink % 2) && fanSpeed ? status_screen0_bmp : status_screen1_bmp);
 
   // Extruders
-  for (int i = 0; i < EXTRUDERS; i++) _draw_heater_status(6 + i * 25, i);
+      #if HAS_TEMP_BED && HAS_FAN
+      #define E_DIST ((LCD_PIXEL_WIDTH)/(EXTRUDERS+2))
+    #elif HAS_TEMP_BED || HAS_FAN
+      #define E_DIST ((LCD_PIXEL_WIDTH)/(EXTRUDERS+1))
+    #else
+      #define E_DIST ((LCD_PIXEL_WIDTH)/(EXTRUDERS))
+    #endif
+    #if E_DIST < 4*DOG_CHAR_WIDTH
+      #error To much devices in GCLD top row
+    #endif
+    for (int i = 0; i < EXTRUDERS; i++) _draw_heater_status(E_DIST/2 + i*E_DIST - 2*DOG_CHAR_WIDTH, i);
 
   // Heatbed
-  if (EXTRUDERS < 4) _draw_heater_status(81, -1);
+    #if HAS_TEMP_BED
+      _draw_heater_status(E_DIST/2 + EXTRUDERS*E_DIST - 2*DOG_CHAR_WIDTH, -1);
+    #endif
 
   // Fan
   lcd_setFont(FONT_STATUSMENU);
   u8g.setPrintPos(104, 27);
-  #if HAS_FAN
-    int per = ((fanSpeed + 1) * 100) / 256;
-    if (per) {
-      lcd_print(itostr3(per));
-      lcd_print('%');
-    }
-    else
-  #endif
-    {
-      lcd_printPGM(PSTR("---"));
-    }
+    #if HAS_FAN
+      static int per = 0;
+      per = ((fanSpeed + 1) * 100) / 256;
+
+      u8g.drawBitmapP(LCD_PIXEL_WIDTH - E_DIST/2 - 2*DOG_CHAR_WIDTH + (4*DOG_CHAR_WIDTH - STATUS_FAN_WIDTH)/2, 2, STATUS_FAN_BYTEWIDTH, STATUS_FAN_HEIGHT, fan_graphic[((per>0) && (blink&1))?0:1]);
+      u8g.setPrintPos(LCD_PIXEL_WIDTH - E_DIST/2 - 2*DOG_CHAR_WIDTH, 28);
+     if (per) {
+        lcd_print(itostr3(per));
+        lcd_print('%');
+      }
+      else
+      {
+        lcd_printPGM(PSTR("----"));
+      }
+    #endif
 
   // X, Y, Z-Coordinates
   #define XYZ_BASELINE 38
@@ -389,6 +376,36 @@ static void lcd_implementation_status_screen() {
   u8g.setPrintPos(12, 49);
   lcd_print(itostr3(feedrate_multiplier));
   lcd_print('%');
+
+  #if ENABLED(SDSUPPORT)
+    // SD Card Symbol
+    u8g.drawBox(42, 42 - TALL_FONT_CORRECTION, 8, 7);
+    u8g.drawBox(50, 44 - TALL_FONT_CORRECTION, 2, 5);
+    u8g.drawFrame(42, 49 - TALL_FONT_CORRECTION, 10, 4);
+    u8g.drawPixel(50, 43 - TALL_FONT_CORRECTION);
+
+    // Progress bar frame
+    u8g.drawFrame(54, 49, 73, 4 - TALL_FONT_CORRECTION);
+
+    // SD Card Progress bar and clock
+    lcd_setFont(FONT_STATUSMENU);
+
+    if (IS_SD_PRINTING) {
+      // Progress bar solid part
+      u8g.drawBox(55, 50, (unsigned int)(71.f * card.percentDone() / 100.f), 2 - TALL_FONT_CORRECTION);
+    }
+
+    u8g.setPrintPos(80,48);
+    if (print_job_start_ms != 0) {
+      uint16_t time = (millis() - print_job_start_ms) / 60000;
+      lcd_print(itostr2(time/60));
+      lcd_print(':');
+      lcd_print(itostr2(time%60));
+    }
+    else {
+      lcd_printPGM(PSTR("--:--"));
+    }
+  #endif
 
   // Status line
   lcd_setFont(FONT_STATUSMENU);
