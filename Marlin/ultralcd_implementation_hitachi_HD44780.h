@@ -722,7 +722,7 @@ static void lcd_implementation_status_screen() {
       lcd_printPGM(PSTR("Dia "));
       lcd.print(dtostrf(filament_width_meas, 4, 2, conv));
       lcd_printPGM(PSTR(" V"));
-      lcd.print(itoa(100.0 * volumetric_multiplier[FILAMENT_SENSOR_EXTRUDER_NUM]),conv,10);
+      lcd.print(itoa(100.0 * volumetric_multiplier[FILAMENT_SENSOR_EXTRUDER_NUM],conv,10));
       lcd.print('%');
       return;
     }
