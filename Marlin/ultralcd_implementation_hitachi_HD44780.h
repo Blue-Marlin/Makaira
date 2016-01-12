@@ -522,11 +522,11 @@ Possible status screens:
        |01234567890123456789|
 */
 static void lcd_implementation_status_screen() {
-
+  char conv[8];
   #define LCD_TEMP_ONLY(T1,T2) \
-    lcd.print(itostr3(T1 + 0.5)); \
+    lcd.print(dtostrf(T1 + 0.4,3,0,conv)); \
     lcd.print('/'); \
-    lcd.print(itostr3left(T2 + 0.5))
+    lcd.print(itoa(T2 + 0.5,conv,10))
 
   #define LCD_TEMP(T1,T2,PREFIX) \
     lcd.print(PREFIX); \
@@ -594,10 +594,10 @@ static void lcd_implementation_status_screen() {
     #if LCD_WIDTH < 20
 
       #if ENABLED(SDSUPPORT)
-        lcd.setCursor(0, 2);
+        lcd.setCursor(0, 1);
         lcd_printPGM(PSTR("SD"));
         if (IS_SD_PRINTING)
-          lcd.print(itostr3(card.percentDone()));
+          lcd.print(uitoaR10(card.percentDone(),conv,3));
         else
           lcd_printPGM(PSTR("---"));
           lcd.print('%');
@@ -617,14 +617,19 @@ static void lcd_implementation_status_screen() {
       #else
 
         lcd.print('X');
-        if (axis_known_position[X_AXIS])
-          lcd.print(ftostr4sign(current_position[X_AXIS]));
+        if (axis_known_position[X_AXIS]) {
+          lcd.print(dtostrfMP(current_position[X_AXIS],4,2,conv));
+          lcd_printPGM(PSTR(" "));
+}
         else
           lcd_printPGM(PSTR(" ---"));
 
-        lcd_printPGM(PSTR(" Y"));
-        if (axis_known_position[Y_AXIS])
-          lcd.print(ftostr4sign(current_position[Y_AXIS]));
+        lcd.setCursor(6, 1);
+        lcd_printPGM(PSTR("Y"));
+        if (axis_known_position[Y_AXIS]) {
+          lcd.print(dtostrfMP(current_position[Y_AXIS],4,2,conv));
+          lcd_printPGM(PSTR(" "));
+        }
         else
           lcd_printPGM(PSTR(" ---"));
 
@@ -633,11 +638,13 @@ static void lcd_implementation_status_screen() {
     #endif // LCD_WIDTH >= 20
 
     lcd.setCursor(LCD_WIDTH - 8, 1);
-    lcd_printPGM(PSTR("Z "));
-    if (axis_known_position[Z_AXIS])
-      lcd.print(ftostr32sp(current_position[Z_AXIS] + 0.00001));
+    lcd_printPGM(PSTR("Z"));
+    if (axis_known_position[Z_AXIS]) {
+      lcd.print(dtostrfMP(current_position[Z_AXIS],7,2,conv));
+      lcd_printPGM(PSTR(" "));
+    }
     else
-      lcd_printPGM(PSTR("---.--"));
+      lcd_printPGM(PSTR(" ---.--"));
 
   #endif // LCD_HEIGHT > 2
 
@@ -649,7 +656,7 @@ static void lcd_implementation_status_screen() {
 
     lcd.setCursor(0, 2);
     lcd.print(LCD_STR_FEEDRATE[0]);
-    lcd.print(itostr3(feedrate_multiplier));
+    lcd.print(uitoaR10(feedrate_multiplier,conv,3));
     lcd.print('%');
 
     #if LCD_WIDTH > 19 && ENABLED(SDSUPPORT)
@@ -657,7 +664,7 @@ static void lcd_implementation_status_screen() {
       lcd.setCursor(7, 2);
       lcd_printPGM(PSTR("SD"));
       if (IS_SD_PRINTING)
-        lcd.print(itostr3(card.percentDone()));
+        lcd.print(uitoaR10(card.percentDone(),conv,3));
       else
         lcd_printPGM(PSTR("---"));
       lcd.print('%');
@@ -668,9 +675,9 @@ static void lcd_implementation_status_screen() {
     lcd.print(LCD_STR_CLOCK[0]);
     if (print_job_start_ms != 0) {
       uint16_t time = millis() / 60000 - print_job_start_ms / 60000;
-      lcd.print(itostr2(time / 60));
+      lcd.print(uitoaR10p(time/60, conv, 2, ' '));
       lcd.print(':');
-      lcd.print(itostr2(time % 60));
+      lcd.print(uitoaR10p(time%60, conv, 2, '0'));
     }
     else {
       lcd_printPGM(PSTR("--:--"));
@@ -713,9 +720,9 @@ static void lcd_implementation_status_screen() {
     // After allowing lcd_status_message to show for 5 seconds
     if (millis() >= previous_lcd_status_ms + 5000) {
       lcd_printPGM(PSTR("Dia "));
-      lcd.print(ftostr12ns(filament_width_meas));
+      lcd.print(dtostrf(filament_width_meas, 4, 2, conv));
       lcd_printPGM(PSTR(" V"));
-      lcd.print(itostr3(100.0 * volumetric_multiplier[FILAMENT_SENSOR_EXTRUDER_NUM]));
+      lcd.print(itoa(100.0 * volumetric_multiplier[FILAMENT_SENSOR_EXTRUDER_NUM]),conv,10);
       lcd.print('%');
       return;
     }

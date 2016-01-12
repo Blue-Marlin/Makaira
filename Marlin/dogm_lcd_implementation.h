@@ -219,12 +219,8 @@ static void lcd_implementation_init() {
   // pinMode(17, OUTPUT); // Enable LCD backlight
   // digitalWrite(17, HIGH);
 
-  #if ENABLED(LCD_SCREEN_ROT_90)
-    u8g.setRot90();   // Rotate screen by 90°
-  #elif ENABLED(LCD_SCREEN_ROT_180)
+  #if ENABLED(LCD_SCREEN_ROT_180)
     u8g.setRot180();  // Rotate screen by 180°
-  #elif ENABLED(LCD_SCREEN_ROT_270)
-    u8g.setRot270();  // Rotate screen by 270°
   #endif
 
   #if ENABLED(SHOW_BOOTSCREEN)
@@ -276,10 +272,8 @@ static void _draw_heater_status(int x, int heater) {
   #else
     if (!glcd_loopcounter) {
   #endif
-    itostr3S(int((heater >= 0 ? degTargetHotend(heater) : degTargetBed()) + 0.5),target_str[heaterp1]);
-    //uitoaR10(int((isBed ? degTargetBed() : degTargetHotend(heater)) + 0.5), target_str[heaterp1], 3);
-    itostr3S(int(heater >= 0 ? degHotend(heater) : degBed()) + 0.5,is_str[heaterp1]);
-    //uitoaR10(int(isBed ? degBed() : degHotend(heater)) + 0.5, is_str[heaterp1], 3);
+    uitoaR10(int((isBed ? degTargetBed() : degTargetHotend(heater)) + 0.5), target_str[heaterp1], 3);
+    uitoaR10(int(isBed ? degBed() : degHotend(heater)) + 0.5, is_str[heaterp1], 3);
   }
   lcd_setFont(FONT_STATUSMENU);
   u8g.setPrintPos(x, 7);
@@ -323,33 +317,24 @@ static void lcd_implementation_status_screen() {
 
   // precalculate all strings in round 0
   if (!glcd_loopcounter) {
-    ftostr31nsS(current_position[X_AXIS],xpos_str);
-    //dtostrfMP(current_position[X_AXIS], 5, 2, xpos_str);
-    ftostr31nsS(current_position[Y_AXIS],ypos_str);
-    //dtostrfMP(current_position[Y_AXIS], 5, 2, ypos_str);
-    ftostr32spS(current_position[Z_AXIS],zpos_str);
-    //dtostrfMP(current_position[Z_AXIS], 6, 2, zpos_str);
-    itostr3S(feedrate_multiplier,fr_str);
-    //uitoaR10(feedrate_multiplier, fr_str, 3);
+    dtostrfMP(current_position[X_AXIS], 5, 2, xpos_str);
+    dtostrfMP(current_position[Y_AXIS], 5, 2, ypos_str);
+    dtostrfMP(current_position[Z_AXIS], 6, 2, zpos_str);
+    uitoaR10(feedrate_multiplier, fr_str, 3);
     #if HAS_FAN
       per = ((fanSpeed + 1) * 100) / 256;
-      itostr3S(per,fanper_str);
-      //uitoaR10(per, fanper_str, 3);
+      uitoaR10(per, fanper_str, 3);
     #endif
     #if ENABLED(SDSUPPORT)
       time = (millis() - print_job_start_ms) / 60000;
-      itostr2S(time/60,h_str);
-      //uitoaR10(time/60, h_str, 2);
-      itostr2S(time%60,m_str);
-      //uitoaR10p(time%60, m_str, 2, '0');
+      uitoaR10(time/60, h_str, 2);
+      uitoaR10p(time%60, m_str, 2, '0');
       if (IS_SD_PRINTING)
         progress_bar = (unsigned int)(71.f * card.percentDone() / 100.f);
     #endif
     #if ENABLED(FILAMENT_LCD_DISPLAY)
-      ftostr12nsS(filament_width_meas,fila_d_str);
-      //dtostrfMP(filament_width_meas, 4, 2, fila_d_str);
-      itostr3S(100.0 * volumetric_multiplier[FILAMENT_SENSOR_EXTRUDER_NUM],fila_f_str);
-      //itoa(100.0 * volumetric_multiplier[FILAMENT_SENSOR_EXTRUDER_NUM], fila_f_str, 10);
+      dtostrfMP(filament_width_meas, 4, 2, fila_d_str);
+      itoa(100.0 * volumetric_multiplier[FILAMENT_SENSOR_EXTRUDER_NUM], fila_f_str, 10);
     #endif
   }
 
