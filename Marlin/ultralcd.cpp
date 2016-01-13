@@ -1717,26 +1717,24 @@ void lcd_update() {
           lcd_setFont(FONT_MENU);
           u8g.setPrintPos(125, 0);
           #if ENABLED(LCD_SCREEN_ROT_180)
-            if (glcd_loopcounter == 0) {
+            if ((glcd_loopcounter == 0) && (blink & 1))
+              u8g.drawPixel(127, 63); // draw alive dot
           #else
-            if (glcd_loopcounter == glcd_loops -1) {
+            if ((glcd_loopcounter == glcd_loops -1) && (blink & 1))
+              u8g.drawPixel(127, 63); // draw alive dot
           #endif
-            if (blink & 1) u8g.setColorIndex(1); else u8g.setColorIndex(0); // Set color for the alive dot
-            u8g.drawPixel(127, 63); // draw alive dot
-            u8g.setColorIndex(1); // black on white
-          }
           (*currentMenu)();
           glcd_loopcounter++;
         } while (u8g.nextPage());
 
         glcd_loops = glcd_loopcounter;
-/*
+
         SERIAL_ECHO_START;
         SERIAL_ECHO("LCD_update: ");
         SERIAL_ECHO((int)glcd_loopcounter);
         SERIAL_ECHO(" ");
         SERIAL_ECHOLN(millis() - ms);
-*/
+
       }
     #else
       if (lcdDrawUpdate) {

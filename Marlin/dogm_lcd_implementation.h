@@ -256,7 +256,7 @@ static void lcd_implementation_init() {
 }
 
 int8_t glcd_loopcounter = 0;
-int8_t glcd_loops = 0;
+int8_t glcd_loops = 2;
 
 static void lcd_implementation_clear() { } // Automatically cleared by Picture Loop
 
@@ -315,6 +315,8 @@ static void lcd_implementation_status_screen() {
     static char fila_f_str[5];
   #endif
 
+  u8g.setColorIndex(1); // black on white
+
   // precalculate all strings in round 0
   if (!glcd_loopcounter) {
     dtostrfMP(current_position[X_AXIS], 5, 2, xpos_str);
@@ -345,8 +347,6 @@ static void lcd_implementation_status_screen() {
     if (!(glcd_loopcounter & ((glcd_loops)>>1))) {
   #endif
 
-    u8g.setColorIndex(1); // black on white
-
     // Symbols menu graphics, animated fan
 
     // Extruders
@@ -357,11 +357,22 @@ static void lcd_implementation_status_screen() {
     #else
       #define E_DIST ((LCD_PIXEL_WIDTH)/(EXTRUDERS))
     #endif
-    #if E_DIST < 4*DOG_CHAR_WIDTH
-      #error To much devices in GCLD top row
-    #endif
 
-    for (int i = 0; i < EXTRUDERS; i++) _draw_heater_status(E_DIST/2 + i*E_DIST - 2*DOG_CHAR_WIDTH, i);
+    // 5 devices fit into the top row
+    #if E_DIST < 4*DOG_CHAR_WIDTH
+      #if HAS_TEMP_BED && HAS_FAN
+        #define EDIST2 (LCD_PIXEL_WIDTH)/4
+      #elif HAS_TEMP_BED || HAS_FAN
+        #define EDIST2 (LCD_PIXEL_WIDTH)/3
+      #else
+        #define EDIST2 (LCD_PIXEL_WIDTH)/2
+      #endif
+      // If EXTRUDERS can be larger then 4 we need a extra counter to replace (blink & 3)
+      _draw_heater_status(E_DIST2/2 - 2*DOG_CHAR_WIDTH, active_extruder); // active_extruder at the first place
+      _draw_heater_status(E_DIST2/2 + E_DIST2 - 2*DOG_CHAR_WIDTH, (blink & 3)); // alter extruders at the second place
+    #else
+      for (int i = 0; i < EXTRUDERS; i++) _draw_heater_status(E_DIST/2 + i*E_DIST - 2*DOG_CHAR_WIDTH, i);
+    #endif
 
     // Heatbed
     #if HAS_TEMP_BED
@@ -395,11 +406,8 @@ static void lcd_implementation_status_screen() {
   #define XYZ_BASELINE 38
   lcd_setFont(FONT_STATUSMENU);
 
-//  u8g.setColorIndex(0); // white on black
   u8g.setPrintPos(2, XYZ_BASELINE);
   lcd_print('X');
-  u8g.drawPixel(8, XYZ_BASELINE - 5);
-  u8g.drawPixel(8, XYZ_BASELINE - 3);
   u8g.setPrintPos(10, XYZ_BASELINE);
   if (axis_known_position[X_AXIS])
     lcd_print(xpos_str);
@@ -407,8 +415,6 @@ static void lcd_implementation_status_screen() {
     lcd_printPGM(PSTR("---"));
   u8g.setPrintPos(43, XYZ_BASELINE);
   lcd_print('Y');
-  u8g.drawPixel(49, XYZ_BASELINE - 5);
-  u8g.drawPixel(49, XYZ_BASELINE - 3);
   u8g.setPrintPos(51, XYZ_BASELINE);
   if (axis_known_position[Y_AXIS])
     lcd_print(ypos_str);
@@ -416,8 +422,6 @@ static void lcd_implementation_status_screen() {
     lcd_printPGM(PSTR("---"));
   u8g.setPrintPos(83, XYZ_BASELINE);
   lcd_print('Z');
-  u8g.drawPixel(89, XYZ_BASELINE - 5);
-  u8g.drawPixel(89, XYZ_BASELINE - 3);
   u8g.setPrintPos(91, XYZ_BASELINE);
   if (axis_known_position[Z_AXIS])
     lcd_print(zpos_str);
