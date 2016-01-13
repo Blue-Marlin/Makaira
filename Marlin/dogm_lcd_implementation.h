@@ -446,28 +446,22 @@ static void lcd_implementation_status_screen() {
       u8g.drawHLine(0, 39, LCD_PIXEL_WIDTH);
     #endif
 
+    lcd_setFont(FONT_STATUSMENU);
     #if ENABLED(SDSUPPORT)
       // SD Card Symbol
-      u8g.drawFrame(42, 42 - TALL_FONT_CORRECTION, 10, 7);
-      u8g.drawPixel(50, 43 - TALL_FONT_CORRECTION);
-      u8g.setColorIndex(0); // white on black
-      u8g.drawPixel(50, 42 - TALL_FONT_CORRECTION);
-      u8g.drawPixel(51, 43 - TALL_FONT_CORRECTION);
-      u8g.drawPixel(51, 42 - TALL_FONT_CORRECTION);
-      u8g.setColorIndex(1); // black on white
-      if (IS_SD_INSERTED) {
-        u8g.drawBox(42, 49 - TALL_FONT_CORRECTION, 10, 4);
-      }
+
+      if (IS_SD_INSERTED)
+        u8g.drawBitmapP(42, 42, STATUS_SD1_BYTEWIDTH, STATUS_SD1_HEIGHT, sd1_graphic);
+      else
+        u8g.drawBitmapP(42, 42, STATUS_SD0_BYTEWIDTH, STATUS_SD0_HEIGHT, sd0_graphic);
 
       // SD Card Progress bar and clock
-      lcd_setFont(FONT_STATUSMENU);
-
       if (IS_SD_PRINTING) {
         // Progress bar frame
-        u8g.drawFrame(54, 49, 73, 4 - TALL_FONT_CORRECTION);
+        u8g.drawFrame(54, 49, 73, 3);
 
         // Progress bar solid part
-        u8g.drawBox(55, 50, progress_bar, 2 - TALL_FONT_CORRECTION);
+        u8g.drawBox(55, 50, progress_bar, 1);
 
         if (print_job_start_ms  != 0) {
           u8g.setPrintPos(80,48);
@@ -479,7 +473,6 @@ static void lcd_implementation_status_screen() {
     #endif
 
     // Status line
-    lcd_setFont(FONT_STATUSMENU);
     #if ENABLED(USE_SMALL_INFOFONT)
       u8g.setPrintPos(0, 62);
     #else
