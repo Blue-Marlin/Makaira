@@ -1714,6 +1714,7 @@ void lcd_update() {
         glcd_loopcounter = 0;
         u8g.firstPage();
         do {
+          u8g.setColorIndex(1); // black on white
           lcd_setFont(FONT_MENU);
           u8g.setPrintPos(125, 0);
           #if ENABLED(LCD_SCREEN_ROT_180)
