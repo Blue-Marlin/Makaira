@@ -272,8 +272,8 @@ static void _draw_heater_status(int x, int heater) {
   #else
     if (!glcd_loopcounter) {
   #endif
-    uitoaR10(int((isBed ? degTargetBed() : degTargetHotend(heater)) + 0.5), target_str[heaterp1], 3);
-    uitoaR10(int(isBed ? degBed() : degHotend(heater)) + 0.5, is_str[heaterp1], 3);
+    uitoaR(int((isBed ? degTargetBed() : degTargetHotend(heater)) + 0.5), target_str[heaterp1], 3);
+    uitoaR(int(isBed ? degBed() : degHotend(heater)) + 0.5, is_str[heaterp1], 3);
   }
   lcd_setFont(FONT_STATUSMENU);
   u8g.setPrintPos(x, 7);
@@ -296,9 +296,9 @@ static void _draw_heater_status(int x, int heater) {
 static void lcd_implementation_status_screen() {
 
   // storage for pracalculated strings
-  static char xpos_str[6];
-  static char ypos_str[6];
-  static char zpos_str[7];
+  static char xpos_str[8]; // range -999. to 9999.
+  static char ypos_str[8]; // set 9 for -9999 to 99999
+  static char zpos_str[8];
   static char fr_str[4];
   #if HAS_FAN
     static int per = 0;
@@ -322,15 +322,15 @@ static void lcd_implementation_status_screen() {
     dtostrfMP(current_position[X_AXIS], 5, 2, xpos_str);
     dtostrfMP(current_position[Y_AXIS], 5, 2, ypos_str);
     dtostrfMP(current_position[Z_AXIS], 6, 2, zpos_str);
-    uitoaR10(feedrate_multiplier, fr_str, 3);
+    uitoaR(feedrate_multiplier, fr_str, 3);
     #if HAS_FAN
       per = ((fanSpeed + 1) * 100) / 256;
-      uitoaR10(per, fanper_str, 3);
+      uitoaR(per, fanper_str, 3);
     #endif
     #if ENABLED(SDSUPPORT)
       time = (millis() - print_job_start_ms) / 60000;
-      uitoaR10(time/60, h_str, 2);
-      uitoaR10p(time%60, m_str, 2, '0');
+      uitoaR(time/60, h_str, 2);
+      uitoaRp(time%60, m_str, 2, '0');
       if (IS_SD_PRINTING)
         progress_bar = (unsigned int)(71.f * card.percentDone() / 100.f);
     #endif
@@ -401,33 +401,38 @@ static void lcd_implementation_status_screen() {
     #endif
   }
 
-  // on the border of first to second half - draw at least twice
-  // X, Y, Z-Coordinates
-  #define XYZ_BASELINE 38
-  lcd_setFont(FONT_STATUSMENU);
+  //#define COORDINATE_DISPLAY_OFF
+  //#define COORDINATE_DISPLAY_Z_ONLY
 
-  u8g.setPrintPos(2, XYZ_BASELINE);
-  lcd_print('X');
-  u8g.setPrintPos(10, XYZ_BASELINE);
-  if (axis_known_position[X_AXIS])
-    lcd_print(xpos_str);
-  else
-    lcd_printPGM(PSTR("---"));
-  u8g.setPrintPos(43, XYZ_BASELINE);
-  lcd_print('Y');
-  u8g.setPrintPos(51, XYZ_BASELINE);
-  if (axis_known_position[Y_AXIS])
-    lcd_print(ypos_str);
-  else
-    lcd_printPGM(PSTR("---"));
-  u8g.setPrintPos(83, XYZ_BASELINE);
-  lcd_print('Z');
-  u8g.setPrintPos(91, XYZ_BASELINE);
-  if (axis_known_position[Z_AXIS])
+  #ifndef COORDINATE_DISPLAY_OFF
+    // on the border of first to second half - draw at least twice
+    // X, Y, Z-Coordinates
+    #define XYZ_BASELINE 38
+    #ifndef COORDINATE_DISPLAY_Z_ONLY
+      lcd_setFont(FONT_STATUSMENU);
+
+      u8g.setPrintPos(0, XYZ_BASELINE);
+      if (!axis_known_position[X_AXIS] && blink&1)
+        lcd_print('?');
+      else
+        lcd_print('X');
+      lcd_print(xpos_str);
+
+      u8g.setPrintPos(43, XYZ_BASELINE);
+      if (!axis_known_position[Y_AXIS] && blink&1)
+        lcd_print('?');
+      else
+        lcd_print('Y');
+      lcd_print(ypos_str);
+    #endif
+
+    u8g.setPrintPos(87, XYZ_BASELINE);
+    if (!axis_known_position[Z_AXIS] && blink&1)
+      lcd_print('?');
+    else
+      lcd_print('Z');
     lcd_print(zpos_str);
-  else
-    lcd_printPGM(PSTR("---.--"));
-//  u8g.setColorIndex(1); // black on white
+  #endif
 
   // lower half
   #if ENABLED(LCD_SCREEN_ROT_180)
@@ -455,17 +460,17 @@ static void lcd_implementation_status_screen() {
       // SD Card Symbol
 
       if (IS_SD_INSERTED)
-        u8g.drawBitmapP(42, 42, STATUS_SD1_BYTEWIDTH, STATUS_SD1_HEIGHT, sd1_graphic);
+        u8g.drawBitmapP(40, 42, STATUS_SD1_BYTEWIDTH, STATUS_SD1_HEIGHT, sd1_graphic);
       else
-        u8g.drawBitmapP(42, 42, STATUS_SD0_BYTEWIDTH, STATUS_SD0_HEIGHT, sd0_graphic);
+        u8g.drawBitmapP(40, 42, STATUS_SD0_BYTEWIDTH, STATUS_SD0_HEIGHT, sd0_graphic);
 
       // SD Card Progress bar and clock
       if (IS_SD_PRINTING) {
         // Progress bar frame
-        u8g.drawFrame(54, 49, 73, 3);
+        u8g.drawFrame(53, 49, 73, 3);
 
         // Progress bar solid part
-        u8g.drawBox(55, 50, progress_bar, 1);
+        u8g.drawBox(54, 50, progress_bar, 1);
 
         if (print_job_start_ms  != 0) {
           u8g.setPrintPos(80,48);
@@ -544,28 +549,30 @@ static void _drawmenu_setting_edit_generic(bool isSelected, uint8_t row, const c
   if (pgm)  lcd_printPGM(data);  else  lcd_print((char*)data);
 }
 
+char conv_str[10];
+
 #define lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, data) _drawmenu_setting_edit_generic(sel, row, pstr, data, false)
 #define lcd_implementation_drawmenu_setting_edit_generic_P(sel, row, pstr, data) _drawmenu_setting_edit_generic(sel, row, pstr, data, true)
 
-#define lcd_implementation_drawmenu_setting_edit_int3(sel, row, pstr, pstr2, data, minValue, maxValue) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, itostr3(*(data)))
-#define lcd_implementation_drawmenu_setting_edit_float3(sel, row, pstr, pstr2, data, minValue, maxValue) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, ftostr3(*(data)))
-#define lcd_implementation_drawmenu_setting_edit_float32(sel, row, pstr, pstr2, data, minValue, maxValue) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, ftostr32(*(data)))
-#define lcd_implementation_drawmenu_setting_edit_float43(sel, row, pstr, pstr2, data, minValue, maxValue) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, ftostr43(*(data)))
-#define lcd_implementation_drawmenu_setting_edit_float5(sel, row, pstr, pstr2, data, minValue, maxValue) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, ftostr5(*(data)))
-#define lcd_implementation_drawmenu_setting_edit_float52(sel, row, pstr, pstr2, data, minValue, maxValue) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, ftostr52(*(data)))
-#define lcd_implementation_drawmenu_setting_edit_float51(sel, row, pstr, pstr2, data, minValue, maxValue) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, ftostr51(*(data)))
-#define lcd_implementation_drawmenu_setting_edit_long5(sel, row, pstr, pstr2, data, minValue, maxValue) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, ftostr5(*(data)))
+#define lcd_implementation_drawmenu_setting_edit_int30(sel, row, pstr, pstr2, data, minValue, maxValue) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, itoaL(*(data),3,0,conv_str))
+#define lcd_implementation_drawmenu_setting_edit_long50(sel, row, pstr, pstr2, data, minValue, maxValue) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, dtostrf(*(data),5,0,conv_str))
+#define lcd_implementation_drawmenu_setting_edit_float30(sel, row, pstr, pstr2, data, minValue, maxValue) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, dtostrf(*(data),3,0,conv_str))
+#define lcd_implementation_drawmenu_setting_edit_float50(sel, row, pstr, pstr2, data, minValue, maxValue) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, dtostrf(*(data),5,0,conv_str))
+#define lcd_implementation_drawmenu_setting_edit_float53(sel, row, pstr, pstr2, data, minValue, maxValue) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, dtostrf(*(data),5,3,conv_str))
+#define lcd_implementation_drawmenu_setting_edit_float62(sel, row, pstr, pstr2, data, minValue, maxValue) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, dtostrf(*(data),6,2,conv_str))
+#define lcd_implementation_drawmenu_setting_edit_float71(sel, row, pstr, pstr2, data, minValue, maxValue) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, dtostrf(*(data),7,1,conv_str))
+#define lcd_implementation_drawmenu_setting_edit_float72(sel, row, pstr, pstr2, data, minValue, maxValue) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, dtostrf(*(data),7,2,conv_str))
 #define lcd_implementation_drawmenu_setting_edit_bool(sel, row, pstr, pstr2, data) lcd_implementation_drawmenu_setting_edit_generic_P(sel, row, pstr, (*(data))?PSTR(MSG_ON):PSTR(MSG_OFF))
 
 //Add version for callback functions
-#define lcd_implementation_drawmenu_setting_edit_callback_int3(sel, row, pstr, pstr2, data, minValue, maxValue, callback) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, itostr3(*(data)))
-#define lcd_implementation_drawmenu_setting_edit_callback_float3(sel, row, pstr, pstr2, data, minValue, maxValue, callback) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, ftostr3(*(data)))
-#define lcd_implementation_drawmenu_setting_edit_callback_float32(sel, row, pstr, pstr2, data, minValue, maxValue, callback) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, ftostr32(*(data)))
-#define lcd_implementation_drawmenu_setting_edit_callback_float43(sel, row, pstr, pstr2, data, minValue, maxValue, callback) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, ftostr43(*(data)))
-#define lcd_implementation_drawmenu_setting_edit_callback_float5(sel, row, pstr, pstr2, data, minValue, maxValue, callback) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, ftostr5(*(data)))
-#define lcd_implementation_drawmenu_setting_edit_callback_float52(sel, row, pstr, pstr2, data, minValue, maxValue, callback) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, ftostr52(*(data)))
-#define lcd_implementation_drawmenu_setting_edit_callback_float51(sel, row, pstr, pstr2, data, minValue, maxValue, callback) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, ftostr51(*(data)))
-#define lcd_implementation_drawmenu_setting_edit_callback_long5(sel, row, pstr, pstr2, data, minValue, maxValue, callback) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, ftostr5(*(data)))
+#define lcd_implementation_drawmenu_setting_edit_callback_int30(sel, row, pstr, pstr2, data, minValue, maxValue, callback) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, itoaL(*(data),3,0,conv_str))
+#define lcd_implementation_drawmenu_setting_edit_callback_long50(sel, row, pstr, pstr2, data, minValue, maxValue, callback) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, dtostrf(*(data),5,0,conv_str))
+#define lcd_implementation_drawmenu_setting_edit_callback_float30(sel, row, pstr, pstr2, data, minValue, maxValue, callback) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, dtostrf(*(data),3,0,conv_str))
+#define lcd_implementation_drawmenu_setting_edit_callback_float50(sel, row, pstr, pstr2, data, minValue, maxValue, callback) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, dtostrf(*(data),5,0,conv_str))
+#define lcd_implementation_drawmenu_setting_edit_callback_float53(sel, row, pstr, pstr2, data, minValue, maxValue, callback) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, dtostrf(*(data),5,3,conv_str))
+#define lcd_implementation_drawmenu_setting_edit_callback_float62(sel, row, pstr, pstr2, data, minValue, maxValue, callback) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, dtostrf(*(data),6,2,conv_str))
+#define lcd_implementation_drawmenu_setting_edit_callback_float71(sel, row, pstr, pstr2, data, minValue, maxValue, callback) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, dtostrf(*(data),7,1,conv_str))
+#define lcd_implementation_drawmenu_setting_edit_callback_float72(sel, row, pstr, pstr2, data, minValue, maxValue, callback) lcd_implementation_drawmenu_setting_edit_generic(sel, row, pstr, dtostrf(*(data),7,2,conv_str))
 #define lcd_implementation_drawmenu_setting_edit_callback_bool(sel, row, pstr, pstr2, data, callback) lcd_implementation_drawmenu_setting_edit_generic_P(sel, row, pstr, (*(data))?PSTR(MSG_ON):PSTR(MSG_OFF))
 
 void lcd_implementation_drawedit(const char* pstr, char* value) {
