@@ -328,8 +328,25 @@ const bool X_MAX_ENDSTOP_INVERTING = true; // set to true to invert the logic of
 const bool Y_MAX_ENDSTOP_INVERTING = true; // set to true to invert the logic of the endstop.
 const bool Z_MAX_ENDSTOP_INVERTING = true; // set to true to invert the logic of the endstop.
 const bool Z_MIN_PROBE_ENDSTOP_INVERTING = true; // set to true to invert the logic of the endstop.
+
+// "No unused endstop shall appear in M119!" Disable unused endstops.
 //#define DISABLE_MAX_ENDSTOPS
 //#define DISABLE_MIN_ENDSTOPS
+
+//#define DISABLE_XMIN_ENDSTOP
+//#define DISABLE_XMAX_ENDSTOP
+//#define DISABLE_YMIN_ENDSTOP
+//#define DISABLE_YMAX_ENDSTOP
+//#define DISABLE_ZMIN_ENDSTOP
+//#define DISABLE_ZMAX_ENDSTOP
+
+// The endstop setup can be checked during boot.
+// It is tested if both endstops of an axis are triggered at the same time.
+// It is tested i a triggered endstopp can be freed by moving the tool HOME_BUMP_MM to the mid.
+// The first time you activate this, boot with the tool in mid air.
+// If your tool moves correct ?_ENDSTOP_INVERTING.
+// If your tool moves toward the endstop, correct ?_ENDSTOP_INVERTING and change INVERT_?_DIR.
+//#define ENDSTOP_SELFTEST
 
 // If you want to enable the Z probe pin, but disable its use, uncomment the line below.
 // This only affects a Z probe endstop if you have separate Z min endstop as well and have
