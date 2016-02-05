@@ -196,7 +196,7 @@
  * M501 - Read parameters from EEPROM (if you need reset them after you changed them temporarily).
  * M502 - Revert to the default "factory settings". You still need to store them in EEPROM afterwards if you want to.
  * M503 - Print the current settings (from memory not from EEPROM). Use S0 to leave off headings.
- * M540 - Use S[0|1] to enable or disable the stop SD card print on endstop hit (requires ABORT_ON_ENDSTOP_HIT_FEATURE_ENABLED)
+ * M540 - Use S[0|1] to enable or disable the stop print on endstop hit (requires ABORT_ON_ENDSTOP_HIT_FEATURE_ENABLED)
  * M600 - Pause for filament change X[pos] Y[pos] Z[relative lift] E[initial retract] L[later retract distance for removal]
  * M665 - Set delta configurations: L<diagonal rod> R<delta radius> S<segments/s>
  * M666 - Set delta endstop adjustment
@@ -229,6 +229,26 @@
  *
  */
 
+#define DEFINE_PGM_READ_ANY(type, reader)       \
+  static inline type pgm_read_any(const type *p)  \
+  { return pgm_read_##reader##_near(p); }
+
+DEFINE_PGM_READ_ANY(float,       float);
+DEFINE_PGM_READ_ANY(signed char, byte);
+
+#define XYZ_CONSTS_FROM_CONFIG(type, array, CONFIG) \
+  static const PROGMEM type array##_P[3] =        \
+      { X_##CONFIG, Y_##CONFIG, Z_##CONFIG };     \
+  static inline type array(int axis)          \
+  { return pgm_read_any(&array##_P[axis]); }
+
+XYZ_CONSTS_FROM_CONFIG(float, base_min_pos,   MIN_POS);
+XYZ_CONSTS_FROM_CONFIG(float, base_max_pos,   MAX_POS);
+XYZ_CONSTS_FROM_CONFIG(float, base_home_pos,  HOME_POS);
+XYZ_CONSTS_FROM_CONFIG(float, max_length,     MAX_LENGTH);
+XYZ_CONSTS_FROM_CONFIG(float, home_bump_mm,   HOME_BUMP_MM);
+XYZ_CONSTS_FROM_CONFIG(signed char, home_dir, HOME_DIR);
+
 #if ENABLED(M100_FREE_MEMORY_WATCHER)
   void gcode_M100();
 #endif
@@ -247,12 +267,12 @@ static float destination[NUM_AXIS] = { 0.0 };
 bool axis_known_position[3] = { false };
 bool axis_homed[3] = { false };
 
-static long gcode_N, gcode_LastN, Stopped_gcode_LastN = 0;
+static long gcode_N, gcode_LastN; //Stopped_gcode_LastN = 0; unused
 
 static char* current_command, *current_command_args;
-static int cmd_queue_index_r = 0;
-static int cmd_queue_index_w = 0;
-static int commands_in_queue = 0;
+static uint8_t cmd_queue_index_r = 0;
+static uint8_t cmd_queue_index_w = 0;
+static uint8_t commands_in_queue = 0;
 static char command_queue[BUFSIZE][MAX_CMD_SIZE];
 
 const float homing_feedrate[] = HOMING_FEEDRATE;
@@ -410,9 +430,7 @@ bool target_direction;
   static bool filrunoutEnqueued = false;
 #endif
 
-#if ENABLED(SDSUPPORT)
-  static bool fromsd[BUFSIZE];
-#endif
+static bool send_ok[BUFSIZE];
 
 #if HAS_SERVOS
   Servo servo[NUM_SERVOS];
@@ -500,27 +518,28 @@ static bool drain_queued_commands_P() {
  */
 void enqueuecommands_P(const char* pgcode) {
   queued_commands_P = pgcode;
-  drain_queued_commands_P(); // first command executed asap (when possible)
+  if (!serial_count) { // if we have a fresh line
+    drain_queued_commands_P(); // first command executed asap (when possible)
+  }
 }
 
 /**
  * Copy a command directly into the main command buffer, from RAM.
  *
- * This is done in a non-safe way and needs a rework someday.
  * Returns false if it doesn't add any command
  */
 bool enqueuecommand(const char* cmd) {
-  if (*cmd == ';' || commands_in_queue >= BUFSIZE) return false;
+  if (serial_count || *cmd == ';' || commands_in_queue >= BUFSIZE) return false;
 
-  // This is dangerous if a mixing of serial and this happens
   char* command = command_queue[cmd_queue_index_w];
   strcpy(command, cmd);
   SERIAL_ECHO_START;
   SERIAL_ECHOPGM(MSG_Enqueueing);
   SERIAL_ECHO(command);
   SERIAL_ECHOLNPGM("\"");
-  cmd_queue_index_w = (cmd_queue_index_w + 1) % BUFSIZE;
   commands_in_queue++;
+  send_ok[cmd_queue_index_w] = false;
+  cmd_queue_index_w = (cmd_queue_index_w + 1) % BUFSIZE;
   return true;
 }
 
@@ -612,6 +631,110 @@ void servo_init() {
   void enableStepperDrivers() { pinMode(STEPPER_RESET_PIN, INPUT); }  // set to input, which allows it to be pulled high by pullups
 #endif
 
+#ifdef ENDSTOP_SELFTEST
+  void gcode_M119(); //forward declarations
+  void line_to_current_position();
+  void set_destination_to_current();
+
+  void endstop_test_error( char axis) {
+    SERIAL_ERROR_START;
+    SERIAL_ERRORPGM(" Both endstops triggered on axis: ");
+    SERIAL_ERRORLN(axis);
+    #if ENABLED(ULTRA_LCD)
+      lcd_setalertstatuspgm(PSTR("Error: ENDSTOP"));
+    #endif
+    gcode_M119();
+  }
+
+  void endstop_free_error( char axis) {
+    SERIAL_ERROR_START;
+    SERIAL_ERRORPGM(" Can not free endstop on axis: ");
+    SERIAL_ERRORLN(axis);
+    #if ENABLED(ULTRA_LCD)
+      lcd_setalertstatuspgm(PSTR("Error: ENDSTOP"));
+    #endif
+    gcode_M119();
+  }
+
+  void free_endstop(int axis, float dir) {
+    #if ENABLED(DELTA)
+      current_position[Z_AXIS] += home_bump_mm(axis) * dir;
+    #else
+      current_position[axis] += home_bump_mm(axis) * dir;
+    #endif
+    line_to_current_position();
+    st_synchronize();
+    set_destination_to_current();
+  }
+
+  void selftest_endstops() {
+    #if HAS_X_MIN && HAS_X_MAX
+      if ((READ(X_MIN_PIN)^X_MIN_ENDSTOP_INVERTING) && (READ(X_MAX_PIN)^X_MAX_ENDSTOP_INVERTING)) {
+        endstop_test_error('X');
+      }
+    #endif
+    #if HAS_Y_MIN && HAS_Y_MAX
+      if ((READ(Y_MIN_PIN)^Y_MIN_ENDSTOP_INVERTING) && (READ(Y_MAX_PIN)^Y_MAX_ENDSTOP_INVERTING)) {
+        endstop_test_error('Y');
+      }
+    #endif
+    #if HAS_Z_MIN && HAS_Z_MAX
+      if ((READ(Z_MIN_PIN)^Z_MIN_ENDSTOP_INVERTING) && (READ(Z_MAX_PIN)^Z_MAX_ENDSTOP_INVERTING)) {
+        endstop_test_error('Z');
+      }
+    #endif
+
+    #if HAS_X_MIN
+      if (READ(X_MIN_PIN)^X_MIN_ENDSTOP_INVERTING) {
+        free_endstop(X_AXIS, 1);
+      }
+      if (READ(X_MIN_PIN)^X_MIN_ENDSTOP_INVERTING) {
+        endstop_free_error( 'X' );
+      }
+    #endif
+    #if HAS_X_MAX
+      if (READ(X_MAX_PIN)^X_MAX_ENDSTOP_INVERTING) {
+        free_endstop(X_AXIS, -1);
+      }
+      if (READ(X_MAX_PIN)^X_MAX_ENDSTOP_INVERTING) {
+        endstop_free_error( 'X' );
+      }
+    #endif
+    #if HAS_Y_MIN
+      if (READ(Y_MIN_PIN)^Y_MIN_ENDSTOP_INVERTING) {
+        free_endstop(Y_AXIS, 1);
+      }
+      if (READ(Y_MIN_PIN)^Y_MIN_ENDSTOP_INVERTING) {
+        endstop_free_error( 'Y' );
+      }
+    #endif
+    #if HAS_Y_MAX
+      if (READ(Y_MAX_PIN)^Y_MAX_ENDSTOP_INVERTING) {
+        free_endstop(Y_AXIS, -1);
+      }
+      if (READ(Y_MAX_PIN)^Y_MAX_ENDSTOP_INVERTING) {
+        endstop_free_error( 'Y' );
+      }
+    #endif
+    #if HAS_Z_MIN
+      if (READ(Z_MIN_PIN)^Z_MIN_ENDSTOP_INVERTING) {
+        free_endstop(Z_AXIS, 1);
+      }
+      if (READ(Z_MIN_PIN)^Z_MIN_ENDSTOP_INVERTING) {
+        endstop_free_error( 'Z' );
+      }
+    #endif
+    #if HAS_Z_MAX
+      if (READ(Z_MAX_PIN)^Z_MAX_ENDSTOP_INVERTING) {
+        free_endstop(Z_AXIS, -1);
+      }
+      if (READ(Z_MAX_PIN)^Z_MAX_ENDSTOP_INVERTING) {
+        endstop_free_error( 'Z' );
+      }
+    #endif
+  }
+#endif
+
 /**
  * Marlin entry-point: Set up before the program loop
  *  - Set up the kill pin, filament runout, power hold
@@ -673,9 +796,7 @@ void setup() {
   SERIAL_ECHOPGM(MSG_PLANNER_BUFFER_BYTES);
   SERIAL_ECHOLN((int)sizeof(block_t)*BLOCK_BUFFER_SIZE);
 
-  #if ENABLED(SDSUPPORT)
-    for (int8_t i = 0; i < BUFSIZE; i++) fromsd[i] = false;
-  #endif
+  for (int8_t i = 0; i < BUFSIZE; i++) send_ok[i] = true;
 
   // loads data from EEPROM if available else uses defaults (and resets step acceleration rate)
   Config_RetrieveSettings();
@@ -720,6 +841,10 @@ void setup() {
   #ifdef STAT_LED_BLUE
     pinMode(STAT_LED_BLUE, OUTPUT);
     digitalWrite(STAT_LED_BLUE, LOW); // turn it off
+  #endif
+
+  #ifdef ENDSTOP_SELFTEST
+    selftest_endstops();
   #endif
 }
 
@@ -793,7 +918,9 @@ void gcode_line_error(const char* err, bool doFlush = true) {
  */
 void get_command() {
 
-  if (drain_queued_commands_P()) return; // priority is given to non-serial commands
+  if (!serial_count) { // if we have a fresh line
+    if (drain_queued_commands_P()) return; // priority is given to non-serial commands
+  }
 
   #if ENABLED(NO_TIMEOUTS)
     static millis_t last_command_time = 0;
@@ -829,10 +956,8 @@ void get_command() {
       char* command = command_queue[cmd_queue_index_w];
       command[serial_count] = 0; // terminate string
 
-      // this item in the queue is not from sd
-      #if ENABLED(SDSUPPORT)
-        fromsd[cmd_queue_index_w] = false;
-      #endif
+      // this item in the queue is from the serial line
+      send_ok[cmd_queue_index_w] = true;
 
       while (*command == ' ') command++; // skip any leading spaces
       char* npos = (*command == 'N') ? command : NULL; // Require the N parameter to start the line
@@ -897,8 +1022,8 @@ void get_command() {
       // If command was e-stop process now
       if (strcmp(command, "M112") == 0) kill(PSTR(MSG_KILLED));
 
+      commands_in_queue++;
       cmd_queue_index_w = (cmd_queue_index_w + 1) % BUFSIZE;
-      commands_in_queue += 1;
 
       serial_count = 0; //clear buffer
     }
@@ -955,8 +1080,8 @@ void get_command() {
         }
         command_queue[cmd_queue_index_w][serial_count] = 0; //terminate string
         // if (!comment_mode) {
-        fromsd[cmd_queue_index_w] = true;
-        commands_in_queue += 1;
+        commands_in_queue++;
+        send_ok[cmd_queue_index_w] = false;
         cmd_queue_index_w = (cmd_queue_index_w + 1) % BUFSIZE;
         // }
         comment_mode = false; //for new command
@@ -1000,26 +1125,6 @@ bool code_seen(char code) {
   seen_pointer = strchr(current_command_args, code);
   return (seen_pointer != NULL); // Return TRUE if the code-letter was found
 }
-
-#define DEFINE_PGM_READ_ANY(type, reader)       \
-  static inline type pgm_read_any(const type *p)  \
-  { return pgm_read_##reader##_near(p); }
-
-DEFINE_PGM_READ_ANY(float,       float);
-DEFINE_PGM_READ_ANY(signed char, byte);
-
-#define XYZ_CONSTS_FROM_CONFIG(type, array, CONFIG) \
-  static const PROGMEM type array##_P[3] =        \
-      { X_##CONFIG, Y_##CONFIG, Z_##CONFIG };     \
-  static inline type array(int axis)          \
-  { return pgm_read_any(&array##_P[axis]); }
-
-XYZ_CONSTS_FROM_CONFIG(float, base_min_pos,   MIN_POS);
-XYZ_CONSTS_FROM_CONFIG(float, base_max_pos,   MAX_POS);
-XYZ_CONSTS_FROM_CONFIG(float, base_home_pos,  HOME_POS);
-XYZ_CONSTS_FROM_CONFIG(float, max_length,     MAX_LENGTH);
-XYZ_CONSTS_FROM_CONFIG(float, home_bump_mm,   HOME_BUMP_MM);
-XYZ_CONSTS_FROM_CONFIG(signed char, home_dir, HOME_DIR);
 
 #if ENABLED(DUAL_X_CARRIAGE)
 
@@ -1875,24 +1980,10 @@ static void homeaxis(AxisEnum axis) {
     current_position[axis] = 0;
     sync_plan_position();
 
-    #if ENABLED(DEBUG_LEVELING_FEATURE)
-      if (marlin_debug_flags & DEBUG_LEVELING) {
-        SERIAL_ECHOLNPGM("> enable_endstops(false)");
-      }
-    #endif
-    enable_endstops(false); // Disable endstops while moving away
-
     // Move away from the endstop by the axis HOME_BUMP_MM
     destination[axis] = -home_bump_mm(axis) * axis_home_dir;
     line_to_destination();
     st_synchronize();
-
-    #if ENABLED(DEBUG_LEVELING_FEATURE)
-      if (marlin_debug_flags & DEBUG_LEVELING) {
-        SERIAL_ECHOLNPGM("> enable_endstops(true)");
-      }
-    #endif
-    enable_endstops(true); // Enable endstops for next homing move
 
     // Slow down the feedrate for the next move
     set_homing_bump_feedrate(axis);
@@ -1901,6 +1992,7 @@ static void homeaxis(AxisEnum axis) {
     destination[axis] = 2 * home_bump_mm(axis) * axis_home_dir;
     line_to_destination();
     st_synchronize();
+    endstops_hit_on_purpose(); // clear endstop hit flags
 
     #if ENABLED(DEBUG_LEVELING_FEATURE)
       if (marlin_debug_flags & DEBUG_LEVELING) {
@@ -1936,12 +2028,6 @@ static void homeaxis(AxisEnum axis) {
     #if ENABLED(DELTA)
       // retrace by the amount specified in endstop_adj
       if (endstop_adj[axis] * axis_home_dir < 0) {
-        #if ENABLED(DEBUG_LEVELING_FEATURE)
-          if (marlin_debug_flags & DEBUG_LEVELING) {
-            SERIAL_ECHOLNPGM("> enable_endstops(false)");
-          }
-        #endif
-        enable_endstops(false); // Disable endstops while moving away
         sync_plan_position();
         destination[axis] = endstop_adj[axis];
         #if ENABLED(DEBUG_LEVELING_FEATURE)
@@ -1952,12 +2038,6 @@ static void homeaxis(AxisEnum axis) {
         #endif
         line_to_destination();
         st_synchronize();
-        #if ENABLED(DEBUG_LEVELING_FEATURE)
-          if (marlin_debug_flags & DEBUG_LEVELING) {
-            SERIAL_ECHOLNPGM("> enable_endstops(true)");
-          }
-        #endif
-        enable_endstops(true); // Enable endstops for next homing move
       }
       #if ENABLED(DEBUG_LEVELING_FEATURE)
         else {
@@ -4019,7 +4099,6 @@ inline void gcode_M109() {
       millis_t ms = millis();
       if (ms > temp_ms + 1000UL) { //Print Temp Reading every 1 second while heating up.
         temp_ms = ms;
-        float tt = degHotend(active_extruder);
         #if HAS_TEMP_0 || HAS_TEMP_BED || ENABLED(HEATER_0_USES_MAX6675)
           print_heaterstates();
           SERIAL_EOL;
@@ -4754,19 +4833,18 @@ inline void gcode_M226() {
       if (servo_index >= 0 && servo_index < NUM_SERVOS)
         servo[servo_index].move(servo_position);
       else {
-        SERIAL_ECHO_START;
-        SERIAL_ECHO("Servo ");
-        SERIAL_ECHO(servo_index);
-        SERIAL_ECHOLN(" out of range");
+        SERIAL_ERROR_START;
+        SERIAL_ERROR("Servo ");
+        SERIAL_ERROR(servo_index);
+        SERIAL_ERRORLN(" out of range");
       }
     }
     else if (servo_index >= 0) {
-      SERIAL_PROTOCOL(MSG_OK);
-      SERIAL_PROTOCOL(" Servo ");
-      SERIAL_PROTOCOL(servo_index);
-      SERIAL_PROTOCOL(": ");
-      SERIAL_PROTOCOL(servo[servo_index].read());
-      SERIAL_EOL;
+      SERIAL_ECHO_START;
+      SERIAL_ECHO(" Servo ");
+      SERIAL_ECHO(servo_index);
+      SERIAL_ECHO(": ");
+      SERIAL_ECHOLN(servo[servo_index].read());
     }
   }
 
@@ -4817,27 +4895,27 @@ inline void gcode_M226() {
       #endif
 
       updatePID();
-      SERIAL_PROTOCOL(MSG_OK);
+      SERIAL_ECHO_START;
       #if ENABLED(PID_PARAMS_PER_EXTRUDER)
-        SERIAL_PROTOCOL(" e:"); // specify extruder in serial output
-        SERIAL_PROTOCOL(e);
+        SERIAL_ECHO(" e:"); // specify extruder in serial output
+        SERIAL_ECHO(e);
       #endif // PID_PARAMS_PER_EXTRUDER
-      SERIAL_PROTOCOL(" p:");
-      SERIAL_PROTOCOL(PID_PARAM(Kp, e));
-      SERIAL_PROTOCOL(" i:");
-      SERIAL_PROTOCOL(unscalePID_i(PID_PARAM(Ki, e)));
-      SERIAL_PROTOCOL(" d:");
-      SERIAL_PROTOCOL(unscalePID_d(PID_PARAM(Kd, e)));
+      SERIAL_ECHO(" p:");
+      SERIAL_ECHO(PID_PARAM(Kp, e));
+      SERIAL_ECHO(" i:");
+      SERIAL_ECHO(unscalePID_i(PID_PARAM(Ki, e)));
+      SERIAL_ECHO(" d:");
+      SERIAL_ECHO(unscalePID_d(PID_PARAM(Kd, e)));
       #if ENABLED(PID_ADD_EXTRUSION_RATE)
-        SERIAL_PROTOCOL(" c:");
+        SERIAL_ECHO(" c:");
         //Kc does not have scaling applied above, or in resetting defaults
-        SERIAL_PROTOCOL(PID_PARAM(Kc, e));
+        SERIAL_ECHO(PID_PARAM(Kc, e));
       #endif
       SERIAL_EOL;
     }
     else {
-      SERIAL_ECHO_START;
-      SERIAL_ECHOLN(MSG_INVALID_EXTRUDER);
+      SERIAL_ERROR_START;
+      SERIAL_ERRORLN(MSG_INVALID_EXTRUDER);
     }
   }
 
@@ -4851,14 +4929,13 @@ inline void gcode_M226() {
     if (code_seen('D')) bedKd = scalePID_d(code_value());
 
     updatePID();
-    SERIAL_PROTOCOL(MSG_OK);
-    SERIAL_PROTOCOL(" p:");
-    SERIAL_PROTOCOL(bedKp);
-    SERIAL_PROTOCOL(" i:");
-    SERIAL_PROTOCOL(unscalePID_i(bedKi));
-    SERIAL_PROTOCOL(" d:");
-    SERIAL_PROTOCOL(unscalePID_d(bedKd));
-    SERIAL_EOL;
+    SERIAL_ECHO_START;
+    SERIAL_ECHO(" p:");
+    SERIAL_ECHO(bedKp);
+    SERIAL_ECHO(" i:");
+    SERIAL_ECHO(unscalePID_i(bedKi));
+    SERIAL_ECHO(" d:");
+    SERIAL_ECHOLN(unscalePID_d(bedKd));
   }
 
 #endif // PIDTEMPBED
@@ -5290,7 +5367,6 @@ inline void gcode_M503() {
       float value = code_value();
       if (Z_PROBE_OFFSET_RANGE_MIN <= value && value <= Z_PROBE_OFFSET_RANGE_MAX) {
         zprobe_zoffset = value;
-        SERIAL_ECHOPGM(MSG_OK);
       }
       else {
         SERIAL_ECHOPGM(MSG_Z_MIN);
@@ -6263,9 +6339,7 @@ void FlushSerialRequestResend() {
 
 void ok_to_send() {
   refresh_cmd_timeout();
-  #if ENABLED(SDSUPPORT)
-    if (fromsd[cmd_queue_index_r]) return;
-  #endif
+  if (!send_ok[cmd_queue_index_r]) return;
   SERIAL_PROTOCOLPGM(MSG_OK);
   #if ENABLED(ADVANCED_OK)
     SERIAL_PROTOCOLPGM(" N"); SERIAL_PROTOCOL(gcode_LastN);
@@ -7195,7 +7269,7 @@ void Stop() {
   disable_all_heaters();
   if (IsRunning()) {
     Running = false;
-    Stopped_gcode_LastN = gcode_LastN; // Save last g_code for restart
+    //Stopped_gcode_LastN = gcode_LastN; // Save last g_code for restart
     SERIAL_ERROR_START;
     SERIAL_ERRORLNPGM(MSG_ERR_STOPPED);
     LCD_MESSAGEPGM(MSG_STOPPED);

@@ -112,10 +112,7 @@
     #endif
 
     // Uncomment screen orientation
-    #define LCD_SCREEN_ROT_0
-    //#define LCD_SCREEN_ROT_90
     //#define LCD_SCREEN_ROT_180
-    //#define LCD_SCREEN_ROT_270
 
   #else // !DOGLCD - Standard Hitachi LCD controller
 
@@ -156,10 +153,7 @@
   // GLCD features
   #define LCD_CONTRAST           1
   // Uncomment screen orientation
-  #define LCD_SCREEN_ROT_0
-  //#define LCD_SCREEN_ROT_90
   //#define LCD_SCREEN_ROT_180
-  //#define LCD_SCREEN_ROT_270
   //The encoder and click button
   #define BTN_EN1               11
   #define BTN_EN2               10
