@@ -16,6 +16,8 @@
 //#define PAGE_HEIGHT 16  //256 byte framebuffer
 #define PAGE_HEIGHT 32  //512 byte framebuffer
 
+#define U8G_10DELAY 10   // down to 3 is save for me. Saves ~2ms per complete loop. Originally 10. !!! Over clocking the Display !!!
+
 #define LCD_PIXEL_WIDTH 128
 #define LCD_PIXEL_HEIGHT 64
 
@@ -37,12 +39,12 @@ static void ST7920_SWSPI_SND_8BIT(uint8_t val) {
   }
 }
 
-#define ST7920_CS()              {WRITE(ST7920_CS_PIN,1);u8g_10MicroDelay();}
+#define ST7920_CS()              {WRITE(ST7920_CS_PIN,1);delayMicroseconds(U8G_10DELAY);}
 #define ST7920_NCS()             {WRITE(ST7920_CS_PIN,0);}
-#define ST7920_SET_CMD()         {ST7920_SWSPI_SND_8BIT(0xf8);u8g_10MicroDelay();}
-#define ST7920_SET_DAT()         {ST7920_SWSPI_SND_8BIT(0xfa);u8g_10MicroDelay();}
-#define ST7920_WRITE_BYTE(a)     {ST7920_SWSPI_SND_8BIT((uint8_t)((a)&0xf0u));ST7920_SWSPI_SND_8BIT((uint8_t)((a)<<4u));u8g_10MicroDelay();}
-#define ST7920_WRITE_BYTES(p,l)  {uint8_t i;for(i=0;i<l;i++){ST7920_SWSPI_SND_8BIT(*p&0xf0);ST7920_SWSPI_SND_8BIT(*p<<4);p++;}u8g_10MicroDelay();}
+#define ST7920_SET_CMD()         {ST7920_SWSPI_SND_8BIT(0xf8);delayMicroseconds(U8G_10DELAY);}
+#define ST7920_SET_DAT()         {ST7920_SWSPI_SND_8BIT(0xfa);delayMicroseconds(U8G_10DELAY);}
+#define ST7920_WRITE_BYTE(a)     {ST7920_SWSPI_SND_8BIT((uint8_t)((a)&0xf0u));ST7920_SWSPI_SND_8BIT((uint8_t)((a)<<4u));delayMicroseconds(U8G_10DELAY);}
+#define ST7920_WRITE_BYTES(p,l)  {uint8_t i;for(i=0;i<l;i++){ST7920_SWSPI_SND_8BIT(*p&0xf0);ST7920_SWSPI_SND_8BIT(*p<<4);p++;}delayMicroseconds(U8G_10DELAY);}
 
 uint8_t u8g_dev_rrd_st7920_128x64_fn(u8g_t *u8g, u8g_dev_t *dev, uint8_t msg, void *arg) {
   uint8_t i, y;
