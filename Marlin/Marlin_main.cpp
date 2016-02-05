@@ -229,6 +229,26 @@
  *
  */
 
+#define DEFINE_PGM_READ_ANY(type, reader)       \
+  static inline type pgm_read_any(const type *p)  \
+  { return pgm_read_##reader##_near(p); }
+
+DEFINE_PGM_READ_ANY(float,       float);
+DEFINE_PGM_READ_ANY(signed char, byte);
+
+#define XYZ_CONSTS_FROM_CONFIG(type, array, CONFIG) \
+  static const PROGMEM type array##_P[3] =        \
+      { X_##CONFIG, Y_##CONFIG, Z_##CONFIG };     \
+  static inline type array(int axis)          \
+  { return pgm_read_any(&array##_P[axis]); }
+
+XYZ_CONSTS_FROM_CONFIG(float, base_min_pos,   MIN_POS);
+XYZ_CONSTS_FROM_CONFIG(float, base_max_pos,   MAX_POS);
+XYZ_CONSTS_FROM_CONFIG(float, base_home_pos,  HOME_POS);
+XYZ_CONSTS_FROM_CONFIG(float, max_length,     MAX_LENGTH);
+XYZ_CONSTS_FROM_CONFIG(float, home_bump_mm,   HOME_BUMP_MM);
+XYZ_CONSTS_FROM_CONFIG(signed char, home_dir, HOME_DIR);
+
 #if ENABLED(M100_FREE_MEMORY_WATCHER)
   void gcode_M100();
 #endif
@@ -610,6 +630,110 @@ void servo_init() {
   void enableStepperDrivers() { pinMode(STEPPER_RESET_PIN, INPUT); }  // set to input, which allows it to be pulled high by pullups
 #endif
 
+#ifdef ENDSTOP_SELFTEST
+  void gcode_M119(); //forward declarations
+  void line_to_current_position();
+  void set_destination_to_current();
+
+  void endstop_test_error( char axis) {
+    SERIAL_ERROR_START;
+    SERIAL_ERRORPGM(" Both endstops triggered on axis: ");
+    SERIAL_ERRORLN(axis);
+    #if ENABLED(ULTRA_LCD)
+      lcd_setalertstatuspgm(PSTR("Error: ENDSTOP"));
+    #endif
+    gcode_M119();
+  }
+
+  void endstop_free_error( char axis) {
+    SERIAL_ERROR_START;
+    SERIAL_ERRORPGM(" Can not free endstop on axis: ");
+    SERIAL_ERRORLN(axis);
+    #if ENABLED(ULTRA_LCD)
+      lcd_setalertstatuspgm(PSTR("Error: ENDSTOP"));
+    #endif
+    gcode_M119();
+  }
+
+  void free_endstop(int axis, float dir) {
+    #if ENABLED(DELTA)
+      current_position[Z_AXIS] += home_bump_mm(axis) * dir;
+    #else
+      current_position[axis] += home_bump_mm(axis) * dir;
+    #endif
+    line_to_current_position();
+    st_synchronize();
+    set_destination_to_current();
+  }
+
+  void selftest_endstops() {
+    #if HAS_X_MIN && HAS_X_MAX
+      if ((READ(X_MIN_PIN)^X_MIN_ENDSTOP_INVERTING) && (READ(X_MAX_PIN)^X_MAX_ENDSTOP_INVERTING)) {
+        endstop_test_error('X');
+      }
+    #endif
+    #if HAS_Y_MIN && HAS_Y_MAX
+      if ((READ(Y_MIN_PIN)^Y_MIN_ENDSTOP_INVERTING) && (READ(Y_MAX_PIN)^Y_MAX_ENDSTOP_INVERTING)) {
+        endstop_test_error('Y');
+      }
+    #endif
+    #if HAS_Z_MIN && HAS_Z_MAX
+      if ((READ(Z_MIN_PIN)^Z_MIN_ENDSTOP_INVERTING) && (READ(Z_MAX_PIN)^Z_MAX_ENDSTOP_INVERTING)) {
+        endstop_test_error('Z');
+      }
+    #endif
+
+    #if HAS_X_MIN
+      if (READ(X_MIN_PIN)^X_MIN_ENDSTOP_INVERTING) {
+        free_endstop(X_AXIS, 1);
+      }
+      if (READ(X_MIN_PIN)^X_MIN_ENDSTOP_INVERTING) {
+        endstop_free_error( 'X' );
+      }
+    #endif
+    #if HAS_X_MAX
+      if (READ(X_MAX_PIN)^X_MAX_ENDSTOP_INVERTING) {
+        free_endstop(X_AXIS, -1);
+      }
+      if (READ(X_MAX_PIN)^X_MAX_ENDSTOP_INVERTING) {
+        endstop_free_error( 'X' );
+      }
+    #endif
+    #if HAS_Y_MIN
+      if (READ(Y_MIN_PIN)^Y_MIN_ENDSTOP_INVERTING) {
+        free_endstop(Y_AXIS, 1);
+      }
+      if (READ(Y_MIN_PIN)^Y_MIN_ENDSTOP_INVERTING) {
+        endstop_free_error( 'Y' );
+      }
+    #endif
+    #if HAS_Y_MAX
+      if (READ(Y_MAX_PIN)^Y_MAX_ENDSTOP_INVERTING) {
+        free_endstop(Y_AXIS, -1);
+      }
+      if (READ(Y_MAX_PIN)^Y_MAX_ENDSTOP_INVERTING) {
+        endstop_free_error( 'Y' );
+      }
+    #endif
+    #if HAS_Z_MIN
+      if (READ(Z_MIN_PIN)^Z_MIN_ENDSTOP_INVERTING) {
+        free_endstop(Z_AXIS, 1);
+      }
+      if (READ(Z_MIN_PIN)^Z_MIN_ENDSTOP_INVERTING) {
+        endstop_free_error( 'Z' );
+      }
+    #endif
+    #if HAS_Z_MAX
+      if (READ(Z_MAX_PIN)^Z_MAX_ENDSTOP_INVERTING) {
+        free_endstop(Z_AXIS, -1);
+      }
+      if (READ(Z_MAX_PIN)^Z_MAX_ENDSTOP_INVERTING) {
+        endstop_free_error( 'Z' );
+      }
+    #endif
+  }
+#endif
+
 /**
  * Marlin entry-point: Set up before the program loop
  *  - Set up the kill pin, filament runout, power hold
@@ -716,6 +840,10 @@ void setup() {
   #ifdef STAT_LED_BLUE
     pinMode(STAT_LED_BLUE, OUTPUT);
     digitalWrite(STAT_LED_BLUE, LOW); // turn it off
+  #endif
+
+  #ifdef ENDSTOP_SELFTEST
+    selftest_endstops();
   #endif
 }
 
@@ -996,26 +1124,6 @@ bool code_seen(char code) {
   seen_pointer = strchr(current_command_args, code);
   return (seen_pointer != NULL); // Return TRUE if the code-letter was found
 }
-
-#define DEFINE_PGM_READ_ANY(type, reader)       \
-  static inline type pgm_read_any(const type *p)  \
-  { return pgm_read_##reader##_near(p); }
-
-DEFINE_PGM_READ_ANY(float,       float);
-DEFINE_PGM_READ_ANY(signed char, byte);
-
-#define XYZ_CONSTS_FROM_CONFIG(type, array, CONFIG) \
-  static const PROGMEM type array##_P[3] =        \
-      { X_##CONFIG, Y_##CONFIG, Z_##CONFIG };     \
-  static inline type array(int axis)          \
-  { return pgm_read_any(&array##_P[axis]); }
-
-XYZ_CONSTS_FROM_CONFIG(float, base_min_pos,   MIN_POS);
-XYZ_CONSTS_FROM_CONFIG(float, base_max_pos,   MAX_POS);
-XYZ_CONSTS_FROM_CONFIG(float, base_home_pos,  HOME_POS);
-XYZ_CONSTS_FROM_CONFIG(float, max_length,     MAX_LENGTH);
-XYZ_CONSTS_FROM_CONFIG(float, home_bump_mm,   HOME_BUMP_MM);
-XYZ_CONSTS_FROM_CONFIG(signed char, home_dir, HOME_DIR);
 
 #if ENABLED(DUAL_X_CARRIAGE)
 
