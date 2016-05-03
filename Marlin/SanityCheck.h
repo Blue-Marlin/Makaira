@@ -508,6 +508,8 @@
   #error Z_DUAL_ENDSTOPS settings are simplified. Just set Z2_USE_ENDSTOP to the endstop you want to repurpose for Z2
 #elif defined(LANGUAGE_INCLUDE)
   #error LANGUAGE_INCLUDE has been replaced by LCD_LANGUAGE. Please update your configuration.
+#elif defined(PID_FUNCTIONAL_RANGE)
+  #error Due to improvements in the PID algorithm PID_FUNCTIONAL_RANGE isn't needed anymore.
 #endif
 
 #endif //SANITYCHECK_H

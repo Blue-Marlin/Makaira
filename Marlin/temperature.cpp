@@ -133,7 +133,6 @@ static volatile bool temp_meas_ready = false;
   static float pid_error[EXTRUDERS];
   static float temp_iState_min[EXTRUDERS];
   static float temp_iState_max[EXTRUDERS];
-  static bool pid_reset[EXTRUDERS];
 #endif //PIDTEMP
 #if ENABLED(PIDTEMPBED)
   //static cannot be external:
@@ -586,51 +585,37 @@ float get_pid_output(int e) {
       pid_error[e] = target_temperature[e] - current_temperature[e];
       dTerm[e] = K2 * PID_PARAM(Kd, e) * (current_temperature[e] - temp_dState[e]) + K1 * dTerm[e];
       temp_dState[e] = current_temperature[e];
-      if (pid_error[e] > PID_FUNCTIONAL_RANGE) {
-        pid_output = BANG_MAX;
-        pid_reset[e] = true;
-      }
-      else if (pid_error[e] < -(PID_FUNCTIONAL_RANGE) || target_temperature[e] == 0) {
-        pid_output = 0;
-        pid_reset[e] = true;
-      }
-      else {
-        if (pid_reset[e]) {
-          temp_iState[e] = 0.0;
-          pid_reset[e] = false;
-        }
-        pTerm[e] = PID_PARAM(Kp, e) * pid_error[e];
-        temp_iState[e] += pid_error[e];
-        temp_iState[e] = constrain(temp_iState[e], temp_iState_min[e], temp_iState_max[e]);
-        iTerm[e] = PID_PARAM(Ki, e) * temp_iState[e];
+      pTerm[e] = PID_PARAM(Kp, e) * pid_error[e];
+      temp_iState[e] += pid_error[e];
+      temp_iState[e] = constrain(temp_iState[e], temp_iState_min[e], temp_iState_max[e]);
+      iTerm[e] = PID_PARAM(Ki, e) * temp_iState[e];
 
-        pid_output = pTerm[e] + iTerm[e] - dTerm[e];
+      pid_output = pTerm[e] + iTerm[e] - dTerm[e];
 
-        #if ENABLED(PID_ADD_EXTRUSION_RATE)
-          cTerm[e] = 0;
-          if (e == active_extruder) {
-            long e_position = stepper.position(E_AXIS);
-            if (e_position > last_position[e]) {
-              lpq[lpq_ptr++] = e_position - last_position[e];
-              last_position[e] = e_position;
-            }
-            else {
-              lpq[lpq_ptr++] = 0;
-            }
-            if (lpq_ptr >= lpq_len) lpq_ptr = 0;
-            cTerm[e] = (lpq[lpq_ptr] / planner.axis_steps_per_unit[E_AXIS]) * PID_PARAM(Kc, e);
-            pid_output += cTerm[e];
+      #if ENABLED(PID_ADD_EXTRUSION_RATE)
+        cTerm[e] = 0;
+        if (e == active_extruder) {
+          long e_position = stepper.position(E_AXIS);
+          if (e_position > last_position[e]) {
+            lpq[lpq_ptr++] = e_position - last_position[e];
+            last_position[e] = e_position;
           }
-        #endif //PID_ADD_EXTRUSION_RATE
+          else {
+            lpq[lpq_ptr++] = 0;
+          }
+          if (lpq_ptr >= lpq_len) lpq_ptr = 0;
+          cTerm[e] = (lpq[lpq_ptr] / planner.axis_steps_per_unit[E_AXIS]) * PID_PARAM(Kc, e);
+          pid_output += cTerm[e];
+        }
+      #endif //PID_ADD_EXTRUSION_RATE
 
-        if (pid_output > PID_MAX) {
-          if (pid_error[e] > 0) temp_iState[e] -= pid_error[e]; // conditional un-integration
-          pid_output = PID_MAX;
-        }
-        else if (pid_output < 0) {
-          if (pid_error[e] < 0) temp_iState[e] -= pid_error[e]; // conditional un-integration
-          pid_output = 0;
-        }
+      if (pid_output > PID_MAX) {
+        if (pid_error[e] > 0) temp_iState[e] -= pid_error[e]; // conditional un-integration
+        pid_output = PID_MAX;
+      }
+      else if (pid_output < 0) {
+        if (pid_error[e] < 0) temp_iState[e] -= pid_error[e]; // conditional un-integration
+        pid_output = 0;
       }
     #else
       pid_output = constrain(target_temperature[e], 0, PID_MAX);
